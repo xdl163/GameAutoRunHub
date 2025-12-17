@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>日志中心 - GameAutoRunHub</title>
+    <title>平台级配置 - GameAutoRunHub</title>
     <link rel="stylesheet" href="/static/console.css" />
   </head>
-  <body data-active-key="account_logs" data-log-endpoint="/api/logs/account" data-required-roles="admin,super_admin">
+  <body data-active-key="platform_config">
     <header class="topbar">
       <div class="topbar-left">
         <div id="user-info"></div>
@@ -25,25 +25,11 @@
       <main class="content">
         <section class="panel">
           <header class="panel-header">
-            <h2>账户操作日志</h2>
-            <div class="actions">
-              <button id="refresh-logs" class="ghost">刷新</button>
-            </div>
+            <h2>平台级配置</h2>
           </header>
           <div class="panel-body">
-            <div class="card table-card">
-              <table class="simple-table">
-                <thead>
-                  <tr>
-                    <th style="width: 160px">时间</th>
-                    <th>操作人</th>
-                    <th>目标账户</th>
-                    <th>操作</th>
-                    <th>详情</th>
-                  </tr>
-                </thead>
-                <tbody id="log-rows"></tbody>
-              </table>
+            <div class="card">
+              <p class="muted">此页面预留用于超级管理员的系统级配置，后续可扩展接入具体配置项。</p>
             </div>
           </div>
         </section>
@@ -51,6 +37,6 @@
     </div>
 
     <script src="/static/console.js"></script>
-    <script src="/static/logs.js"></script>
+    <script src="/static/system-platform.js"></script>
   </body>
 </html>

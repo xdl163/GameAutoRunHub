@@ -40,9 +40,34 @@ async def logs_page():
     return FileResponse("static/logs.html")
 
 
+@app.get("/logs/account", summary="账户操作日志", include_in_schema=False)
+async def account_logs_page():
+    return FileResponse("static/logs.html")
+
+
+@app.get("/logs/task", summary="任务操作日志", include_in_schema=False)
+async def task_logs_page():
+    return FileResponse("static/task-logs.html")
+
+
+@app.get("/logs/device", summary="设备池操作日志", include_in_schema=False)
+async def device_logs_page():
+    return FileResponse("static/device-logs.html")
+
+
 @app.get("/system", summary="系统配置", include_in_schema=False)
 async def system_page():
     return FileResponse("static/system.html")
+
+
+@app.get("/system/global", summary="全局参数配置", include_in_schema=False)
+async def system_global_page():
+    return FileResponse("static/system.html")
+
+
+@app.get("/system/platform", summary="平台级配置", include_in_schema=False)
+async def system_platform_page():
+    return FileResponse("static/system-platform.html")
 
 
 @app.get("/account", summary="账户设置", include_in_schema=False)

@@ -15,28 +15,28 @@ const PermissionMenus = {
     {
       key: "logs",
       label: "日志中心",
-      href: "/logs",
       children: [
-        { key: "task_logs", label: "任务操作日志" },
-        { key: "device_logs", label: "设备池操作日志" },
-        { key: "account_logs", label: "账户操作日志" },
+        { key: "task_logs", label: "任务操作日志", href: "/logs/task" },
+        { key: "device_logs", label: "设备池操作日志", href: "/logs/device" },
+        { key: "account_logs", label: "账户操作日志", href: "/logs/account" },
       ],
+      href: "/logs/account",
     },
     {
       key: "system",
       label: "系统配置",
-      href: "/system",
-      children: [{ key: "global_config", label: "全局参数配置" }],
+      href: "/system/global",
+      children: [{ key: "global_config", label: "全局参数配置", href: "/system/global" }],
     },
   ],
   super_admin: [
     {
       key: "system",
       label: "系统配置",
-      href: "/system",
+      href: "/system/platform",
       children: [
-        { key: "platform_config", label: "平台级配置" },
-        { key: "global_config", label: "全局参数配置" },
+        { key: "platform_config", label: "平台级配置", href: "/system/platform" },
+        { key: "global_config", label: "全局参数配置", href: "/system/global" },
       ],
     },
   ],
@@ -140,17 +140,13 @@ function buildMenu(role, activeKey) {
     link.className = "menu-item";
     link.href = item.href;
     link.textContent = item.label;
-    if (item.key === activeKey) {
+
+    if (item.key === activeKey || item.children?.some((c) => c.key === activeKey)) {
       link.classList.add("active");
     }
 
     if (item.children) {
       link.classList.add("parent");
-      link.addEventListener("click", (e) => {
-        // 始终跳转到父级页面，避免必须点子项才能进入
-        e.preventDefault();
-        window.location.href = item.href;
-      });
 
       const wrapper = document.createElement("div");
       wrapper.appendChild(link);
@@ -161,7 +157,10 @@ function buildMenu(role, activeKey) {
         const childLink = document.createElement("a");
         childLink.className = "menu-item child";
         childLink.textContent = child.label;
-        childLink.href = item.href;
+        childLink.href = child.href || item.href;
+        if (child.key === activeKey) {
+          childLink.classList.add("active");
+        }
         childrenList.appendChild(childLink);
       });
 

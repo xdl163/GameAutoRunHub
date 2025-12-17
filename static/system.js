@@ -44,7 +44,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    const user = initConsoleShell("system");
+    const user = initConsoleShell("global_config");
     if (!requireRole(user, ["admin", "super_admin"])) return;
 
     try {

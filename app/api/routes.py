@@ -76,6 +76,14 @@ class AccountLogRead(BaseModel):
     performer_username: str
 
 
+class SimpleLogRead(BaseModel):
+    id: int
+    action: str
+    detail: str | None
+    created_at: str
+    performer_username: str
+
+
 @router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
 async def login(payload: LoginRequest, db=Depends(get_db)):
     result = user_service.authenticate(db, username=payload.username, password=payload.password)
@@ -292,3 +300,49 @@ async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db
             )
         )
     return results
+
+
+@router.get(
+    "/logs/task",
+    response_model=List[SimpleLogRead],
+    summary="任务操作日志（管理员及以上）",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_task_logs(current=Depends(get_current_user)):
+    user: User = current["user"]
+    if user.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
+
+    sample = [
+        SimpleLogRead(
+            id=1,
+            action="任务创建",
+            detail="创建任务 T-1001",
+            created_at=datetime.now(timezone.utc).isoformat(),
+            performer_username=user.username,
+        )
+    ]
+    return sample
+
+
+@router.get(
+    "/logs/device",
+    response_model=List[SimpleLogRead],
+    summary="设备池操作日志（管理员及以上）",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_device_logs(current=Depends(get_current_user)):
+    user: User = current["user"]
+    if user.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
+
+    sample = [
+        SimpleLogRead(
+            id=1,
+            action="设备绑定",
+            detail="设备 D-42 绑定到任务池",
+            created_at=datetime.now(timezone.utc).isoformat(),
+            performer_username=user.username,
+        )
+    ]
+    return sample

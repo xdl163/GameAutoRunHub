@@ -1,8 +1,17 @@
 (function () {
   const { initConsoleShell, requireRole, apiFetch } = window.ConsoleShared;
 
-  async function fetchLogs() {
-    const resp = await apiFetch("/api/logs/account");
+  function getPageConfig() {
+    const body = document.body;
+    return {
+      endpoint: body.dataset.logEndpoint || "/api/logs/account",
+      activeKey: body.dataset.activeKey || "logs",
+      requiredRoles: (body.dataset.requiredRoles || "admin,super_admin").split(","),
+    };
+  }
+
+  async function fetchLogs(endpoint) {
+    const resp = await apiFetch(endpoint);
     if (!resp.ok) throw new Error("日志获取失败");
     return resp.json();
   }
@@ -24,9 +33,9 @@
     });
   }
 
-  async function refresh() {
+  async function refresh(endpoint) {
     try {
-      const logs = await fetchLogs();
+      const logs = await fetchLogs(endpoint);
       renderLogs(logs);
     } catch (err) {
       console.error(err);
@@ -35,10 +44,12 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    const user = initConsoleShell("logs");
-    if (!requireRole(user, ["admin", "super_admin"])) return;
+    const config = getPageConfig();
+    const user = initConsoleShell(config.activeKey);
+    if (!requireRole(user, config.requiredRoles)) return;
 
-    document.querySelector("#refresh-logs")?.addEventListener("click", refresh);
-    refresh();
+    const handler = () => refresh(config.endpoint);
+    document.querySelector("#refresh-logs")?.addEventListener("click", handler);
+    handler();
   });
 })();
