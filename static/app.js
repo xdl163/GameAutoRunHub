@@ -58,6 +58,29 @@ const defaultUsers = [
 let currentUser = null;
 let users = [...defaultUsers];
 
+function showLoginView() {
+  loginView.classList.remove("hidden");
+  consoleSection.classList.add("hidden");
+  qs("#app").style.alignItems = "center";
+  qs("#app").style.justifyContent = "center";
+}
+
+function showConsoleView() {
+  loginView.classList.add("hidden");
+  consoleSection.classList.remove("hidden");
+  qs("#app").style.alignItems = "stretch";
+  qs("#app").style.justifyContent = "stretch";
+}
+
+function ensureAuthenticated() {
+  if (!currentUser) {
+    showLoginView();
+    window.location.hash = "";
+    return false;
+  }
+  return true;
+}
+
 const qs = (selector) => document.querySelector(selector);
 const menuContainer = qs("#menu");
 const consoleSection = qs("#console");
@@ -161,7 +184,7 @@ function buildMenu(role) {
 
 function handleMenuClick(event, key) {
   event.preventDefault();
-  if (!currentUser) return;
+  if (!ensureAuthenticated()) return;
 
   const protectedMenus = ["users", "logs", "system"];
   if (protectedMenus.includes(key) && !["admin", "super_admin"].includes(currentUser.role)) {
@@ -178,6 +201,8 @@ function handleMenuClick(event, key) {
 }
 
 function switchPanel(key) {
+  if (!ensureAuthenticated()) return;
+
   contentPanels.forEach((panel) => panel.classList.remove("active"));
 
   const panel = qs(`#${key}`) || qs("#tasks");
@@ -208,10 +233,7 @@ function login() {
 
   currentUser = matchedUser;
   qs("#login-error").textContent = "";
-  loginView.classList.add("hidden");
-  consoleSection.classList.remove("hidden");
-  qs("#app").style.alignItems = "stretch";
-  qs("#app").style.justifyContent = "stretch";
+  showConsoleView();
 
   renderClock();
   renderUserInfo();
@@ -225,10 +247,8 @@ function logout() {
   currentUser = null;
   qs("#password").value = "";
   qs("#login-error").textContent = "";
-  consoleSection.classList.add("hidden");
-  loginView.classList.remove("hidden");
-  qs("#app").style.alignItems = "center";
-  qs("#app").style.justifyContent = "center";
+  showLoginView();
+  switchPanel("tasks");
 }
 
 function bindEvents() {
@@ -305,6 +325,19 @@ function init() {
   setInterval(renderClock, 1000);
   renderTasks();
   renderUsers();
+
+  window.addEventListener("hashchange", () => {
+    const key = window.location.hash.replace("#", "");
+    if (!ensureAuthenticated()) return;
+    if (key) {
+      switchPanel(key);
+    }
+  });
+
+  if (!ensureAuthenticated()) {
+    showLoginView();
+    return;
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);
