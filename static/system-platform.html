@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>平台级配置 - GameAutoRunHub</title>
+    <link rel="stylesheet" href="/static/console.css" />
+  </head>
+  <body data-active-key="platform_config">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div id="user-info"></div>
+        <div id="clock"></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="change-password-btn" class="ghost">修改密码</button>
+        <button id="logout-btn" class="ghost">退出登录</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="menu"></nav>
+      </aside>
+      <main class="content">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>平台级配置</h2>
+          </header>
+          <div class="panel-body">
+            <div class="card">
+              <p class="muted">此页面预留用于超级管理员的系统级配置，后续可扩展接入具体配置项。</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/console.js"></script>
+    <script src="/static/system-platform.js"></script>
+  </body>
+</html>

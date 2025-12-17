@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>设备池操作日志 - GameAutoRunHub</title>
+    <link rel="stylesheet" href="/static/console.css" />
+  </head>
+  <body data-active-key="device_logs" data-log-endpoint="/api/logs/device" data-required-roles="admin,super_admin">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div id="user-info"></div>
+        <div id="clock"></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="change-password-btn" class="ghost">修改密码</button>
+        <button id="logout-btn" class="ghost">退出登录</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="menu"></nav>
+      </aside>
+      <main class="content">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>设备池操作日志</h2>
+            <div class="actions">
+              <button id="refresh-logs" class="ghost">刷新</button>
+            </div>
+          </header>
+          <div class="panel-body">
+            <div class="card table-card">
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th style="width: 160px">时间</th>
+                    <th>操作人</th>
+                    <th>操作</th>
+                    <th>详情</th>
+                  </tr>
+                </thead>
+                <tbody id="log-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/console.js"></script>
+    <script src="/static/logs.js"></script>
+  </body>
+</html>

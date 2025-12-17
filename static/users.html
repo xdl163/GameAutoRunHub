@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>用户管理 - GameAutoRunHub</title>
+    <link rel="stylesheet" href="/static/console.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div id="user-info"></div>
+        <div id="clock"></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="change-password-btn" class="ghost">修改密码</button>
+        <button id="logout-btn" class="ghost">退出登录</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="menu"></nav>
+      </aside>
+      <main class="content">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>用户管理</h2>
+          </header>
+          <div class="panel-body">
+            <div class="card" style="display: flex; justify-content: space-between; align-items: center">
+              <div><strong>用户列表</strong></div>
+              <button type="button" id="open-create" class="primary">新建用户</button>
+            </div>
+
+            <div class="card table-card">
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th>用户名</th>
+                    <th>显示名称</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th style="width: 260px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="user-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="user-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>新建用户</h3>
+          <button class="close-btn" id="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <label class="field">
+            <span>用户名</span>
+            <input id="new-username" type="text" placeholder="唯一用户名" />
+          </label>
+          <label class="field">
+            <span>显示名称</span>
+            <input id="new-display" type="text" placeholder="昵称/姓名" />
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input id="new-password" type="password" placeholder="初始密码" />
+          </label>
+          <label class="field">
+            <span>角色</span>
+            <select id="new-role">
+              <option value="user">普通用户</option>
+              <option value="admin">管理员</option>
+              <option value="super_admin">超级管理员</option>
+            </select>
+          </label>
+          <p id="user-form-error" class="error"></p>
+          <button type="button" id="add-user" class="primary">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="reset-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>密码已重置</h3>
+          <button class="close-btn" id="close-reset">×</button>
+        </header>
+        <div class="modal-body">
+          <p class="muted">请妥善保存生成的随机密码：</p>
+          <div class="card" id="reset-result" style="font-size: 18px; font-weight: 600"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/console.js"></script>
+    <script src="/static/users.js"></script>
+  </body>
+</html>

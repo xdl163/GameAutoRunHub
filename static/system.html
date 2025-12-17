@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>全局参数配置 - GameAutoRunHub</title>
+    <link rel="stylesheet" href="/static/console.css" />
+  </head>
+  <body data-active-key="global_config">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div id="user-info"></div>
+        <div id="clock"></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="change-password-btn" class="ghost">修改密码</button>
+        <button id="logout-btn" class="ghost">退出登录</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="menu"></nav>
+      </aside>
+      <main class="content">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>全局参数配置</h2>
+          </header>
+          <div class="panel-body">
+            <form id="global-config-form" class="form-grid">
+              <div class="form-field">
+                <label for="score-rate">灵光积分默认速率（每小时）</label>
+                <input id="score-rate" name="default_score_rate" type="number" min="0" required />
+                <small class="muted">示例：7000</small>
+              </div>
+              <div class="form-field">
+                <label for="multiplier">挂机倍率默认倍率</label>
+                <input
+                  id="multiplier"
+                  name="default_multiplier"
+                  type="number"
+                  min="0"
+                  step="0.00001"
+                  required
+                />
+                <small class="muted">示例：1.15000</small>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="primary">保存配置</button>
+                <span id="form-status" class="muted"></span>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/console.js"></script>
+    <script src="/static/system.js"></script>
+  </body>
+</html>
