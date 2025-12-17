@@ -158,7 +158,6 @@
   }
 
   function openCreateModal() {
-    if (!canManage()) return;
     document.querySelector("#create-device-error").textContent = "";
     document.querySelector("#create-device-id").value = "";
     document.querySelector("#create-device-remark").value = "";
@@ -239,7 +238,6 @@
     if (!currentUser) return;
 
     if (!canManage()) {
-      document.querySelector("#open-create-modal").disabled = true;
       const usernameField = document.querySelector("#filter-username-field");
       if (usernameField) usernameField.style.display = "none";
     }

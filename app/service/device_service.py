@@ -21,7 +21,6 @@ def create_device(
     config: str | None = None,
     remark: str | None = None,
 ):
-    _require_admin(requester)
     existing = device_repository.get_by_device_id(db, device_id)
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备ID已存在")
