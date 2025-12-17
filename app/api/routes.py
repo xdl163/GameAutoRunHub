@@ -449,6 +449,19 @@ async def delete_device(device_id: int, current=Depends(get_current_user), db=De
 async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
     logs = account_log_service.list_logs(db, requester=user)
+
+    user_ids = set()
+    for log in logs:
+        if log.performed_by:
+            user_ids.add(log.performed_by)
+        if log.target_user_id:
+            user_ids.add(log.target_user_id)
+
+    user_map: Dict[int, str] = {}
+    if user_ids:
+        fetched_users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+        user_map = {u.id: u.username for u in fetched_users}
+
     results = []
     for log in logs:
         results.append(
@@ -457,8 +470,8 @@ async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db
                 action=log.action,
                 detail=log.detail,
                 created_at=log.created_at.isoformat(),
-                target_username=log.target_user.username if log.target_user else "",
-                performer_username=log.performer.username if log.performer else "",
+                target_username=user_map.get(log.target_user_id, ""),
+                performer_username=user_map.get(log.performed_by, ""),
             )
         )
     return results
