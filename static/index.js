@@ -46,7 +46,21 @@ function init() {
 
   const sessionRaw = localStorage.getItem("garh_session");
   if (sessionRaw) {
-    window.location.href = "/tasks";
+    const session = JSON.parse(sessionRaw);
+    // 确认令牌仍然有效再跳转，避免无效会话造成重定向噪声
+    fetch("/api/health", {
+      headers: { Authorization: `Bearer ${session.token}` },
+    })
+      .then((resp) => {
+        if (resp.ok) {
+          window.location.href = "/tasks";
+        } else if (resp.status === 401) {
+          localStorage.removeItem("garh_session");
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem("garh_session");
+      });
   }
 }
 
