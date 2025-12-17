@@ -1,5 +1,5 @@
-from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
@@ -14,6 +14,19 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 init_database()
 
 app.include_router(api_router)
+
+
+@app.exception_handler(HTTPException)
+async def handle_http_exception(request: Request, exc: HTTPException):
+    if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        # 对 HTML 访问进行重定向，避免直接返回未认证 JSON
+        if not request.url.path.startswith("/api"):
+            accept_header = request.headers.get("accept", "")
+            if "text/html" in accept_header or "*/*" in accept_header:
+                return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 @app.get("/", summary="控制台入口", include_in_schema=False)
