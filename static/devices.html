@@ -29,7 +29,7 @@
             <p class="muted">管理设备生命周期、查询空闲设备并按条件检索</p>
           </header>
           <div class="panel-body">
-            <div class="card form-grid">
+            <div class="card search-row">
               <div class="field inline">
                 <span>设备ID</span>
                 <input id="filter-device-id" type="text" placeholder="模糊匹配设备ID" />
@@ -57,42 +57,13 @@
               </div>
             </div>
 
-            <div class="card">
-              <header class="card-header">
-                <strong>新建设备</strong>
-              </header>
-              <div class="card-body form-grid">
-                <div class="field inline">
-                  <span>设备ID</span>
-                  <input id="new-device-id" type="text" placeholder="唯一设备ID" />
-                </div>
-                <div class="field inline">
-                  <span>平台</span>
-                  <select id="new-device-platform">
-                    <option value="android">Android</option>
-                    <option value="ios">iOS</option>
-                    <option value="emulator">模拟器</option>
-                  </select>
-                </div>
-                <div class="field inline">
-                  <span>备注</span>
-                  <input id="new-device-remark" type="text" placeholder="备注信息" />
-                </div>
-                <div class="field inline">
-                  <span>配置</span>
-                  <input id="new-device-config" type="text" placeholder="CPU/内存/型号等" />
-                </div>
-                <div class="actions">
-                  <button type="button" id="create-device" class="primary">创建</button>
-                  <p id="device-form-error" class="error" style="margin: 0"></p>
-                </div>
-              </div>
-            </div>
-
             <div class="card table-card">
-              <header class="card-header" style="display: flex; justify-content: space-between; align-items: center">
-                <strong>设备列表</strong>
-                <span class="muted" id="device-summary"></span>
+              <header class="card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+                <div style="display: flex; flex-direction: column; gap: 4px">
+                  <strong>设备列表</strong>
+                  <span class="muted" id="device-summary"></span>
+                </div>
+                <button type="button" id="open-create-modal" class="primary">新建设备</button>
               </header>
               <table class="simple-table">
                 <thead>
@@ -150,6 +121,41 @@
           <p id="edit-error" class="error" style="margin: 0"></p>
           <div class="actions" style="justify-content: flex-end">
             <button type="button" id="save-device" class="primary">保存修改</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="create-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>新建设备</h3>
+          <button class="close-btn" id="close-create-modal">×</button>
+        </header>
+        <div class="modal-body form-grid">
+          <div class="field inline">
+            <span>设备ID</span>
+            <input id="create-device-id" type="text" placeholder="唯一设备ID" />
+          </div>
+          <div class="field inline">
+            <span>平台</span>
+            <select id="create-device-platform">
+              <option value="android">Android</option>
+              <option value="ios">iOS</option>
+              <option value="emulator">模拟器</option>
+            </select>
+          </div>
+          <div class="field inline">
+            <span>备注</span>
+            <input id="create-device-remark" type="text" placeholder="备注信息" />
+          </div>
+          <div class="field inline">
+            <span>配置</span>
+            <input id="create-device-config" type="text" placeholder="CPU/内存/型号等" />
+          </div>
+          <p id="create-device-error" class="error" style="margin: 0"></p>
+          <div class="actions" style="justify-content: flex-end">
+            <button type="button" id="submit-create-device" class="primary">创建</button>
           </div>
         </div>
       </div>

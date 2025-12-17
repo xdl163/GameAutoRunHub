@@ -121,20 +121,20 @@
   }
 
   async function handleCreate() {
-    const errorEl = document.querySelector("#device-form-error");
+    const errorEl = document.querySelector("#create-device-error");
     errorEl.textContent = "";
 
-    const deviceId = document.querySelector("#new-device-id").value.trim();
-    const platform = document.querySelector("#new-device-platform").value;
-    const remark = document.querySelector("#new-device-remark").value.trim();
-    const config = document.querySelector("#new-device-config").value.trim();
+    const deviceId = document.querySelector("#create-device-id").value.trim();
+    const platform = document.querySelector("#create-device-platform").value;
+    const remark = document.querySelector("#create-device-remark").value.trim();
+    const config = document.querySelector("#create-device-config").value.trim();
 
     if (!deviceId) {
       errorEl.textContent = "请输入设备ID";
       return;
     }
 
-    const btn = document.querySelector("#create-device");
+    const btn = document.querySelector("#submit-create-device");
     btn.disabled = true;
     try {
       const resp = await apiFetch("/api/devices", {
@@ -146,13 +146,27 @@
         errorEl.textContent = data.detail || "创建失败";
         return;
       }
-      document.querySelector("#new-device-id").value = "";
-      document.querySelector("#new-device-remark").value = "";
-      document.querySelector("#new-device-config").value = "";
+      document.querySelector("#create-device-id").value = "";
+      document.querySelector("#create-device-remark").value = "";
+      document.querySelector("#create-device-config").value = "";
+      closeCreateModal();
       await refreshDevices();
     } finally {
       btn.disabled = false;
     }
+  }
+
+  function openCreateModal() {
+    if (!canManage()) return;
+    document.querySelector("#create-device-error").textContent = "";
+    document.querySelector("#create-device-id").value = "";
+    document.querySelector("#create-device-remark").value = "";
+    document.querySelector("#create-device-config").value = "";
+    document.querySelector("#create-modal").classList.add("active");
+  }
+
+  function closeCreateModal() {
+    document.querySelector("#create-modal").classList.remove("active");
   }
 
   function openEditModal(device) {
@@ -201,7 +215,9 @@
   }
 
   function bindEvents() {
-    document.querySelector("#create-device").addEventListener("click", handleCreate);
+    document.querySelector("#open-create-modal").addEventListener("click", openCreateModal);
+    document.querySelector("#close-create-modal").addEventListener("click", closeCreateModal);
+    document.querySelector("#submit-create-device").addEventListener("click", handleCreate);
     document.querySelector("#search-devices").addEventListener("click", refreshDevices);
     document.querySelector("#reset-filters").addEventListener("click", () => {
       document.querySelector("#filter-device-id").value = "";
@@ -220,8 +236,7 @@
     if (!currentUser) return;
 
     if (!canManage()) {
-      document.querySelector("#create-device").disabled = true;
-      document.querySelector("#device-form-error").textContent = "当前角色仅可查看设备";
+      document.querySelector("#open-create-modal").disabled = true;
     }
 
     bindEvents();
