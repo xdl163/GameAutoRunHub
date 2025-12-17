@@ -146,16 +146,22 @@ function buildMenu(role, activeKey) {
 
     if (item.children) {
       link.classList.add("parent");
+      link.addEventListener("click", (e) => {
+        // 始终跳转到父级页面，避免必须点子项才能进入
+        e.preventDefault();
+        window.location.href = item.href;
+      });
+
       const wrapper = document.createElement("div");
       wrapper.appendChild(link);
 
       const childrenList = document.createElement("div");
       childrenList.className = "menu-children";
       item.children.forEach((child) => {
-        const childLink = document.createElement("span");
-        childLink.className = "menu-item";
+        const childLink = document.createElement("a");
+        childLink.className = "menu-item child";
         childLink.textContent = child.label;
-        childLink.style.cursor = "not-allowed";
+        childLink.href = item.href;
         childrenList.appendChild(childLink);
       });
 
