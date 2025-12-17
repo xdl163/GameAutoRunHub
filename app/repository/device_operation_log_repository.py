@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.device_operation_log import DeviceOperationLog
@@ -37,4 +37,9 @@ def list_logs(db: Session, limit: int = 200) -> List[DeviceOperationLog]:
     ).all()
 
 
-__all__ = ["create_log", "list_logs"]
+def delete_logs_for_device(db: Session, device_id: int) -> None:
+    db.execute(delete(DeviceOperationLog).where(DeviceOperationLog.device_id == device_id))
+    db.commit()
+
+
+__all__ = ["create_log", "list_logs", "delete_logs_for_device"]

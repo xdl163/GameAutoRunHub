@@ -53,14 +53,13 @@
     rows.innerHTML = "";
 
     if (!devices.length) {
-      rows.innerHTML = `<tr><td colspan="8" style="text-align:center" class="muted">暂无数据</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="7" style="text-align:center" class="muted">暂无数据</td></tr>`;
       return;
     }
 
     devices.forEach((device) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${device.id}</td>
         <td>${device.device_id}</td>
         <td>${PlatformLabels[device.platform] || device.platform}</td>
         <td>${StatusLabels[device.status] || device.status}</td>
@@ -110,13 +109,13 @@
 
   async function refreshDevices() {
     const rows = document.querySelector("#device-rows");
-    rows.innerHTML = `<tr><td colspan="8" style="text-align:center" class="muted">加载中...</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="7" style="text-align:center" class="muted">加载中...</td></tr>`;
     try {
       devicesCache = await fetchDevices();
       updateSummary(devicesCache);
       renderDevices(devicesCache);
     } catch (err) {
-      rows.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
     }
   }
 
