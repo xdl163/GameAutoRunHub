@@ -2,7 +2,6 @@
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -18,4 +17,3 @@ class DeviceOperationLog(Base):
     detail = Column(Text, comment="操作详情或备注")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="操作时间")
 
-    user = relationship("User")

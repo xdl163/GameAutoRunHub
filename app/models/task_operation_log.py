@@ -2,7 +2,6 @@
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
-from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -17,9 +16,3 @@ class TaskOperationLog(Base):
     detail = Column(Text, comment="操作详情或备注")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="操作时间")
 
-    task = relationship(
-        "Task", primaryjoin="Task.id==TaskOperationLog.task_id", viewonly=True
-    )
-    user = relationship(
-        "User", primaryjoin="User.id==TaskOperationLog.user_id", viewonly=True
-    )

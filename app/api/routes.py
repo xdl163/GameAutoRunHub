@@ -7,6 +7,8 @@ from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
+from sqlalchemy import select
+
 from app.api.deps import get_current_user, get_db
 from app.models.enums import DevicePlatformEnum, DeviceStatusEnum, RoleEnum
 from app.models.user import User
@@ -462,6 +464,12 @@ async def list_device_logs(current=Depends(get_current_user), db=Depends(get_db)
     logs = device_operation_log_service.list_logs(db=db, requester=user)
 
     results: List[SimpleLogRead] = []
+    user_map = {}
+    user_ids = {log.user_id for log in logs}
+    if user_ids:
+        fetched_users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+        user_map = {u.id: u.username for u in fetched_users}
+
     for log in logs:
         results.append(
             SimpleLogRead(
@@ -469,7 +477,7 @@ async def list_device_logs(current=Depends(get_current_user), db=Depends(get_db)
                 action=log.action,
                 detail=log.detail,
                 created_at=log.created_at.isoformat(),
-                performer_username=log.user.username if log.user else "",
+                performer_username=user_map.get(log.user_id, ""),
             )
         )
     return results

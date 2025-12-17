@@ -2,7 +2,6 @@
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
-from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -17,13 +16,3 @@ class AccountOperationLog(Base):
     detail = Column(Text, comment="操作详情或备注")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="操作时间")
 
-    target_user = relationship(
-        "User",
-        primaryjoin="User.id==AccountOperationLog.target_user_id",
-        viewonly=True,
-    )
-    performer = relationship(
-        "User",
-        primaryjoin="User.id==AccountOperationLog.performed_by",
-        viewonly=True,
-    )
