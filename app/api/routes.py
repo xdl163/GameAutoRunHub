@@ -7,10 +7,18 @@ from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
+from sqlalchemy import select
+
 from app.api.deps import get_current_user, get_db
-from app.models.enums import RoleEnum
+from app.models.enums import DevicePlatformEnum, DeviceStatusEnum, RoleEnum
 from app.models.user import User
-from app.service import account_log_service, config_service, user_service
+from app.service import (
+    account_log_service,
+    config_service,
+    device_operation_log_service,
+    device_service,
+    user_service,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -82,6 +90,60 @@ class SimpleLogRead(BaseModel):
     detail: str | None
     created_at: str
     performer_username: str
+
+
+class DeviceCreate(BaseModel):
+    device_id: str
+    platform: DevicePlatformEnum
+    config: str | None = None
+    remark: str | None = None
+
+
+class DeviceUpdate(BaseModel):
+    platform: DevicePlatformEnum | None = None
+    status: DeviceStatusEnum | None = None
+    config: str | None = None
+    remark: str | None = None
+
+
+class DeviceRead(BaseModel):
+    id: int
+    device_id: str
+    platform: DevicePlatformEnum
+    status: DeviceStatusEnum
+    config: str | None
+    remark: str | None
+    created_by: int
+    created_by_username: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+def _build_user_map(db, devices: List):
+    user_ids = {getattr(d, "created_by", None) for d in devices if getattr(d, "created_by", None)}
+    if not user_ids:
+        return {}
+    fetched = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+    return {u.id: u.username for u in fetched}
+
+
+def _as_device_read(device, user_map: Dict[int, str] | None = None) -> DeviceRead:
+    user_map = user_map or {}
+    return DeviceRead(
+        id=device.id,
+        device_id=device.device_id,
+        platform=device.platform,
+        status=device.status,
+        config=device.config,
+        remark=device.remark,
+        created_by=device.created_by,
+        created_by_username=user_map.get(device.created_by),
+        created_at=device.created_at,
+        updated_at=device.updated_at,
+    )
 
 
 @router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
@@ -288,6 +350,97 @@ async def remove_user(user_id: int, current=Depends(get_current_user), db=Depend
 
 
 @router.get(
+    "/devices",
+    response_model=List[DeviceRead],
+    summary="查询设备列表",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_devices(
+    device_id: str | None = None,
+    task_id: int | None = None,
+    status: DeviceStatusEnum | None = None,
+    idle_only: bool = False,
+    username: str | None = None,
+    current=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    user: User = current["user"]
+    devices = device_service.list_devices(
+        db,
+        requester=user,
+        device_id=device_id,
+        task_id=task_id,
+        status=status,
+        idle_only=idle_only,
+        creator_username=username,
+    )
+    user_map = _build_user_map(db, devices)
+    return [_as_device_read(device, user_map) for device in devices]
+
+
+@router.get(
+    "/devices/idle",
+    response_model=List[DeviceRead],
+    summary="查看空闲设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_idle_devices(current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    devices = device_service.list_devices(db, requester=user, idle_only=True)
+    user_map = _build_user_map(db, devices)
+    return [_as_device_read(device, user_map) for device in devices]
+
+
+@router.post(
+    "/devices",
+    response_model=DeviceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="新建设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def create_device(payload: DeviceCreate, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    device = device_service.create_device(
+        db,
+        requester=user,
+        device_id=payload.device_id,
+        platform=payload.platform,
+        config=payload.config,
+        remark=payload.remark,
+    )
+    return _as_device_read(device, {user.id: user.username})
+
+
+@router.put(
+    "/devices/{device_id}",
+    response_model=DeviceRead,
+    summary="修改设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_device(
+    device_id: int, payload: DeviceUpdate, current=Depends(get_current_user), db=Depends(get_db)
+):
+    user: User = current["user"]
+    device = device_service.update_device(
+        db, requester=user, device_pk=device_id, **payload.dict(exclude_unset=True)
+    )
+    creator_map = _build_user_map(db, [device])
+    return _as_device_read(device, creator_map)
+
+
+@router.delete(
+    "/devices/{device_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def delete_device(device_id: int, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    device_service.delete_device(db, requester=user, device_pk=device_id)
+    return None
+
+
+@router.get(
     "/logs/account",
     response_model=List[AccountLogRead],
     summary="账户操作日志（管理员及以上）",
@@ -296,6 +449,19 @@ async def remove_user(user_id: int, current=Depends(get_current_user), db=Depend
 async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
     logs = account_log_service.list_logs(db, requester=user)
+
+    user_ids = set()
+    for log in logs:
+        if log.performed_by:
+            user_ids.add(log.performed_by)
+        if log.target_user_id:
+            user_ids.add(log.target_user_id)
+
+    user_map: Dict[int, str] = {}
+    if user_ids:
+        fetched_users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+        user_map = {u.id: u.username for u in fetched_users}
+
     results = []
     for log in logs:
         results.append(
@@ -304,8 +470,8 @@ async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db
                 action=log.action,
                 detail=log.detail,
                 created_at=log.created_at.isoformat(),
-                target_username=log.target_user.username if log.target_user else "",
-                performer_username=log.performer.username if log.performer else "",
+                target_username=user_map.get(log.target_user_id, ""),
+                performer_username=user_map.get(log.performed_by, ""),
             )
         )
     return results
@@ -340,18 +506,25 @@ async def list_task_logs(current=Depends(get_current_user)):
     summary="设备池操作日志（管理员及以上）",
     dependencies=[Depends(get_current_user)],
 )
-async def list_device_logs(current=Depends(get_current_user)):
+async def list_device_logs(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    if user.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
+    logs = device_operation_log_service.list_logs(db=db, requester=user)
 
-    sample = [
-        SimpleLogRead(
-            id=1,
-            action="设备绑定",
-            detail="设备 D-42 绑定到任务池",
-            created_at=datetime.now(timezone.utc).isoformat(),
-            performer_username=user.username,
+    results: List[SimpleLogRead] = []
+    user_map = {}
+    user_ids = {log.user_id for log in logs}
+    if user_ids:
+        fetched_users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+        user_map = {u.id: u.username for u in fetched_users}
+
+    for log in logs:
+        results.append(
+            SimpleLogRead(
+                id=log.id,
+                action=log.action,
+                detail=log.detail,
+                created_at=log.created_at.isoformat(),
+                performer_username=user_map.get(log.user_id, ""),
+            )
         )
-    ]
-    return sample
+    return results

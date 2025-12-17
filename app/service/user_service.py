@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core import security
 from app.models.enums import RoleEnum
 from app.models.user import User
-from app.repository import user_repository
+from app.repository import device_operation_log_repository, user_repository
 from app.service import account_log_service
 
 
@@ -136,6 +136,9 @@ def delete_user(db: Session, *, requester: User, target_id: int):
         action="delete_user",
         detail=f"删除用户 {target.username}",
     )
+    # Older schemas may still have a user FK on device_operation_logs; drop it so
+    # historical logs do not block user deletions.
+    device_operation_log_repository.drop_user_fk_constraints(db)
     user_repository.delete(db, target)
 
 

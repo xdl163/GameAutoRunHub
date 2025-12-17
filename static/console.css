@@ -240,6 +240,24 @@ button.primary {
   flex-wrap: wrap;
 }
 
+.search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.search-row .field {
+  margin: 0;
+  min-width: 180px;
+}
+
+.search-row .actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .status-chip {
   padding: 4px 10px;
   border-radius: 999px;
