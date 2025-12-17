@@ -41,7 +41,8 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    initConsoleShell("account");
+    const user = initConsoleShell("account");
+    if (!user) return;
     bindUpdatePassword();
   });
 })();
