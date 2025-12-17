@@ -19,6 +19,10 @@ class Task(Base):
     device_id = Column(Integer, ForeignKey("devices.id"), comment="绑定设备ID")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, comment="创建人用户ID")
     start_time = Column(DateTime, comment="任务开始时间")
+
+    paused_seconds = Column(Integer, nullable=False, default=0, comment="累计暂停时长（秒）")
+    paused_at = Column(DateTime, nullable=True, comment="进入暂停状态的时间点（用于计算本次暂停时长）")
+
     end_time = Column(DateTime, comment="任务结束时间或预计时间")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, comment="更新时间")

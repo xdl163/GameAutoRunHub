@@ -13,7 +13,7 @@ class Device(Base):
 
     id = Column(Integer, primary_key=True, index=True, comment="自增主键")
     device_id = Column(String(100), unique=True, nullable=False, comment="平台内唯一设备ID")
-    config = Column(Text, comment="设备配置（JSON或文本）")
+    config = Column(Text, comment="设备配置 文本")
     platform = Column(SQLEnum(DevicePlatformEnum), nullable=False, comment="设备平台（Android/iOS/模拟器）")
     remark = Column(String(255), comment="备注信息")
     status = Column(

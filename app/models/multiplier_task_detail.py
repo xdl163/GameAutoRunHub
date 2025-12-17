@@ -13,6 +13,5 @@ class MultiplierTaskDetail(Base):
     task_id = Column(Integer, ForeignKey("tasks.id"), unique=True, nullable=False, comment="关联任务ID")
     duration_hours = Column(Integer, nullable=False, comment="累计时长（小时）")
     current_multiplier = Column(Float, default=1.0, nullable=False, comment="当前倍率")
-    increment_rule = Column(String(255), default="每秒+1.15", nullable=False, comment="倍率增长规则描述")
 
     task = relationship("Task", back_populates="multiplier_detail")
