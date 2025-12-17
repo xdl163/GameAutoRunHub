@@ -20,9 +20,8 @@ class Device(Base):
         SQLEnum(DeviceStatusEnum), default=DeviceStatusEnum.IDLE, nullable=False, comment="设备状态"
     )
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, comment="创建者用户ID")
-    task_id = Column(Integer, ForeignKey("tasks.id"), comment="当前绑定任务ID")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, comment="更新时间")
 
     creator = relationship("User")
-    task = relationship("Task", back_populates="device", foreign_keys=[task_id])
+    tasks = relationship("Task", back_populates="device", foreign_keys="Task.device_id")

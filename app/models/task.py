@@ -27,7 +27,7 @@ class Task(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, comment="更新时间")
 
-    device = relationship("Device", back_populates="task", foreign_keys=[device_id])
+    device = relationship("Device", back_populates="tasks", foreign_keys=[device_id])
     group = relationship("TaskGroup")
     creator = relationship("User")
     score_detail = relationship("ScoreTaskDetail", uselist=False, back_populates="task")
