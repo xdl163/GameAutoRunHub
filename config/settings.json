@@ -1,8 +1,8 @@
 {
   "DB_HOST": "localhost",
   "DB_PORT": 3306,
-  "DB_USER": "user",
-  "DB_PASSWORD": "password",
+  "DB_USER": "root",
+  "DB_PASSWORD": "xu12345678gh",
   "DB_NAME": "game_auto_run_hub",
   "DEFAULT_SCORE_RATE": 7000,
   "DEFAULT_MULTIPLIER": 1.15
