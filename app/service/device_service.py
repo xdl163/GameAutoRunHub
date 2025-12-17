@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from app.models.enums import DevicePlatformEnum, DeviceStatusEnum, RoleEnum
 from app.models.user import User
 from app.repository import device_repository
-from app.repository import device_operation_log_repository
 from app.service import device_operation_log_service
 
 
@@ -119,7 +118,6 @@ def delete_device(db: Session, *, requester: User, device_pk: int):
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
 
-    device_operation_log_repository.delete_logs_for_device(db, device.id)
     device_repository.delete(db, device)
 
 
