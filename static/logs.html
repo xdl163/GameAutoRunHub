@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>日志中心 - GameAutoRunHub</title>
+    <link rel="stylesheet" href="/static/console.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div id="user-info"></div>
+        <div id="clock"></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="change-password-btn" class="ghost">修改密码</button>
+        <button id="logout-btn" class="ghost">退出登录</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="menu"></nav>
+      </aside>
+      <main class="content">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>日志中心</h2>
+            <p class="muted">展示任务、设备池与账户操作日志的占位区域</p>
+          </header>
+          <div class="panel-body">
+            <div class="placeholder">日志列表待接入</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/console.js"></script>
+    <script src="/static/logs.js"></script>
+  </body>
+</html>

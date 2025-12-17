@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>用户管理 - GameAutoRunHub</title>
+    <link rel="stylesheet" href="/static/console.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div id="user-info"></div>
+        <div id="clock"></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="change-password-btn" class="ghost">修改密码</button>
+        <button id="logout-btn" class="ghost">退出登录</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="menu"></nav>
+      </aside>
+      <main class="content">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>用户管理</h2>
+            <p class="muted">管理员及以上可见，支持添加与浏览用户</p>
+          </header>
+          <div class="panel-body split">
+            <form id="user-form" class="card">
+              <label class="field">
+                <span>用户名</span>
+                <input id="new-username" type="text" placeholder="唯一用户名" />
+              </label>
+              <label class="field">
+                <span>显示名称</span>
+                <input id="new-display" type="text" placeholder="昵称/姓名" />
+              </label>
+              <label class="field">
+                <span>密码</span>
+                <input id="new-password" type="password" placeholder="初始密码" />
+              </label>
+              <label class="field">
+                <span>角色</span>
+                <select id="new-role">
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                  <option value="super_admin">超级管理员</option>
+                </select>
+              </label>
+              <button type="button" id="add-user" class="primary">创建用户</button>
+              <p id="user-form-error" class="error"></p>
+            </form>
+
+            <div class="card table-card">
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th>用户名</th>
+                    <th>显示名称</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="user-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/console.js"></script>
+    <script src="/static/users.js"></script>
+  </body>
+</html>
