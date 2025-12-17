@@ -218,16 +218,10 @@ function switchPanel(key) {
 function login() {
   const username = qs("#username").value.trim();
   const password = qs("#password").value.trim();
-  const role = qs("#role").value;
 
   const matchedUser = users.find((u) => u.username === username);
   if (!matchedUser || matchedUser.password !== password) {
     qs("#login-error").textContent = "用户名或密码不正确";
-    return;
-  }
-
-  if (matchedUser.role !== role) {
-    qs("#login-error").textContent = "角色选择与账户不一致";
     return;
   }
 
