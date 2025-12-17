@@ -25,4 +25,4 @@ class Device(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, comment="更新时间")
 
     creator = relationship("User")
-    task = relationship("Task", back_populates="device")
+    task = relationship("Task", back_populates="device", foreign_keys=[task_id])
