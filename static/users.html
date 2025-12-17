@@ -26,33 +26,16 @@
         <section class="panel">
           <header class="panel-header">
             <h2>用户管理</h2>
-            <p class="muted">管理员及以上可见，支持添加与浏览用户</p>
+            <p class="muted">管理员及以上可见，支持添加、浏览、状态切换与角色调整</p>
           </header>
-          <div class="panel-body split">
-            <form id="user-form" class="card">
-              <label class="field">
-                <span>用户名</span>
-                <input id="new-username" type="text" placeholder="唯一用户名" />
-              </label>
-              <label class="field">
-                <span>显示名称</span>
-                <input id="new-display" type="text" placeholder="昵称/姓名" />
-              </label>
-              <label class="field">
-                <span>密码</span>
-                <input id="new-password" type="password" placeholder="初始密码" />
-              </label>
-              <label class="field">
-                <span>角色</span>
-                <select id="new-role">
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
-                  <option value="super_admin">超级管理员</option>
-                </select>
-              </label>
-              <button type="button" id="add-user" class="primary">创建用户</button>
-              <p id="user-form-error" class="error"></p>
-            </form>
+          <div class="panel-body">
+            <div class="card" style="display: flex; justify-content: space-between; align-items: center">
+              <div>
+                <strong>用户列表</strong>
+                <p class="muted" style="margin: 4px 0 0">支持角色下拉、状态切换、删除与新建</p>
+              </div>
+              <button type="button" id="open-create" class="primary">新建用户</button>
+            </div>
 
             <div class="card table-card">
               <table class="simple-table">
@@ -62,6 +45,7 @@
                     <th>显示名称</th>
                     <th>角色</th>
                     <th>状态</th>
+                    <th style="width: 200px">操作</th>
                   </tr>
                 </thead>
                 <tbody id="user-rows"></tbody>
@@ -70,6 +54,39 @@
           </div>
         </section>
       </main>
+    </div>
+
+    <div id="user-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>新建用户</h3>
+          <button class="close-btn" id="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <label class="field">
+            <span>用户名</span>
+            <input id="new-username" type="text" placeholder="唯一用户名" />
+          </label>
+          <label class="field">
+            <span>显示名称</span>
+            <input id="new-display" type="text" placeholder="昵称/姓名" />
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input id="new-password" type="password" placeholder="初始密码" />
+          </label>
+          <label class="field">
+            <span>角色</span>
+            <select id="new-role">
+              <option value="user">普通用户</option>
+              <option value="admin">管理员</option>
+              <option value="super_admin">超级管理员</option>
+            </select>
+          </label>
+          <p id="user-form-error" class="error"></p>
+          <button type="button" id="add-user" class="primary">创建</button>
+        </div>
+      </div>
     </div>
 
     <script src="/static/console.js"></script>
