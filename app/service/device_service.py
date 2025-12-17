@@ -118,6 +118,14 @@ def delete_device(db: Session, *, requester: User, device_pk: int):
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
 
+    device_operation_log_service.log_action(
+        db,
+        performer=requester,
+        device=device,
+        action="delete_device",
+        detail=f"删除设备 {device.device_id}",
+    )
+
     device_repository.delete(db, device)
 
 
