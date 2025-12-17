@@ -41,7 +41,7 @@
                     <th>显示名称</th>
                     <th>角色</th>
                     <th>状态</th>
-                    <th style="width: 200px">操作</th>
+                    <th style="width: 260px">操作</th>
                   </tr>
                 </thead>
                 <tbody id="user-rows"></tbody>
@@ -81,6 +81,19 @@
           </label>
           <p id="user-form-error" class="error"></p>
           <button type="button" id="add-user" class="primary">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="reset-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>密码已重置</h3>
+          <button class="close-btn" id="close-reset">×</button>
+        </header>
+        <div class="modal-body">
+          <p class="muted">请妥善保存生成的随机密码：</p>
+          <div class="card" id="reset-result" style="font-size: 18px; font-weight: 600"></div>
         </div>
       </div>
     </div>

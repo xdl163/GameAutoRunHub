@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import string
 import threading
 from dataclasses import dataclass
 from typing import Dict, Optional
@@ -51,6 +52,11 @@ def clear_all_tokens() -> None:
         _ACTIVE_TOKENS.clear()
 
 
+def generate_random_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 __all__ = [
     "AuthenticatedUser",
     "hash_password",
@@ -59,4 +65,5 @@ __all__ = [
     "invalidate_token",
     "get_user_id_from_token",
     "clear_all_tokens",
+    "generate_random_password",
 ]

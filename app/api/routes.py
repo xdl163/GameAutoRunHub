@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user, get_db
 from app.models.enums import RoleEnum
 from app.models.user import User
-from app.service import config_service, user_service
+from app.service import account_log_service, config_service, user_service
 
 router = APIRouter(prefix="/api")
 
@@ -62,6 +62,20 @@ class GlobalParams(BaseModel):
     default_multiplier: float
 
 
+class ResetPasswordResponse(BaseModel):
+    new_password: str
+    user: UserRead
+
+
+class AccountLogRead(BaseModel):
+    id: int
+    action: str
+    detail: str | None
+    created_at: str
+    target_username: str
+    performer_username: str
+
+
 @router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
 async def login(payload: LoginRequest, db=Depends(get_db)):
     result = user_service.authenticate(db, username=payload.username, password=payload.password)
@@ -69,8 +83,8 @@ async def login(payload: LoginRequest, db=Depends(get_db)):
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, summary="注销并回收令牌")
-async def logout(current=Depends(get_current_user)):
-    user_service.logout(current["token"])
+async def logout(current=Depends(get_current_user), db=Depends(get_db)):
+    user_service.logout(db, user=current["user"], token=current["token"])
     return None
 
 
@@ -230,6 +244,18 @@ async def update_status(
     return user_service.change_status(db, requester=user, target_id=user_id, is_active=payload.is_active)
 
 
+@router.post(
+    "/users/{user_id}/reset-password",
+    response_model=ResetPasswordResponse,
+    summary="重置用户密码",
+    dependencies=[Depends(get_current_user)],
+)
+async def reset_password(user_id: int, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    new_password, updated = user_service.reset_password(db, requester=user, target_id=user_id)
+    return ResetPasswordResponse(new_password=new_password, user=updated)
+
+
 @router.delete(
     "/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -242,3 +268,27 @@ async def remove_user(user_id: int, current=Depends(get_current_user), db=Depend
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能删除自己")
     user_service.delete_user(db, requester=user, target_id=user_id)
     return None
+
+
+@router.get(
+    "/logs/account",
+    response_model=List[AccountLogRead],
+    summary="账户操作日志（管理员及以上）",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    logs = account_log_service.list_logs(db, requester=user)
+    results = []
+    for log in logs:
+        results.append(
+            AccountLogRead(
+                id=log.id,
+                action=log.action,
+                detail=log.detail,
+                created_at=log.created_at.isoformat(),
+                target_username=log.target_user.username if log.target_user else "",
+                performer_username=log.performer.username if log.performer else "",
+            )
+        )
+    return results

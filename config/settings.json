@@ -5,5 +5,5 @@
   "DB_PASSWORD": "password",
   "DB_NAME": "game_auto_run_hub",
   "DEFAULT_SCORE_RATE": 7000,
-  "DEFAULT_MULTIPLIER": 1.0
+  "DEFAULT_MULTIPLIER": 1.15
 }

@@ -10,6 +10,11 @@
     return permittedStatusChange(actor, target);
   }
 
+  function permittedReset(actor, target) {
+    if (actor.role === "super_admin") return true;
+    return actor.role === "admin" && target.role === "user";
+  }
+
   async function fetchUsers() {
     const resp = await apiFetch("/api/users");
     if (!resp.ok) throw new Error("加载用户失败");
@@ -73,6 +78,29 @@
       const actions = document.createElement("div");
       actions.className = "row-actions";
 
+      const resetBtn = document.createElement("button");
+      resetBtn.className = "ghost";
+      resetBtn.textContent = "重置密码";
+      resetBtn.disabled = !permittedReset(currentUser, user);
+      resetBtn.addEventListener("click", async () => {
+        if (!permittedReset(currentUser, user)) return;
+        resetBtn.disabled = true;
+        try {
+          const resp = await apiFetch(`/api/users/${user.id}/reset-password`, { method: "POST" });
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            alert(data.detail || "重置失败");
+            return;
+          }
+          const data = await resp.json();
+          document.querySelector("#reset-result").textContent = data.new_password;
+          openResetModal();
+        } finally {
+          resetBtn.disabled = false;
+          refreshTable(currentUser);
+        }
+      });
+
       const toggleBtn = document.createElement("button");
       toggleBtn.className = "ghost";
       toggleBtn.textContent = user.is_active ? "禁用" : "启用";
@@ -114,6 +142,7 @@
         }
       });
 
+      actions.appendChild(resetBtn);
       actions.appendChild(toggleBtn);
       actions.appendChild(deleteBtn);
       actionTd.appendChild(actions);
@@ -186,6 +215,17 @@
     });
   }
 
+  function bindResetModal() {
+    const modal = document.querySelector("#reset-modal");
+    const closeBtn = document.querySelector("#close-reset");
+    if (!modal || !closeBtn) return;
+    closeBtn.addEventListener("click", () => modal.classList.remove("active"));
+  }
+
+  function openResetModal() {
+    document.querySelector("#reset-modal")?.classList.add("active");
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     const user = initConsoleShell("users");
     if (!requireRole(user, ["admin", "super_admin"])) return;
@@ -196,5 +236,6 @@
     }
     await refreshTable(user);
     bindCreate(user);
+    bindResetModal();
   });
 })();

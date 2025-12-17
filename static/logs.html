@@ -25,11 +25,27 @@
       <main class="content">
         <section class="panel">
           <header class="panel-header">
-            <h2>日志中心</h2>
-            <p class="muted">展示任务、设备池与账户操作日志的占位区域</p>
+            <h2>账户操作日志</h2>
+            <p class="muted">展示登录、登出、创建、启停、删除、重置密码、角色调整等账户操作记录</p>
+            <div class="actions">
+              <button id="refresh-logs" class="ghost">刷新</button>
+            </div>
           </header>
           <div class="panel-body">
-            <div class="placeholder">日志列表待接入</div>
+            <div class="card table-card">
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th style="width: 160px">时间</th>
+                    <th>操作人</th>
+                    <th>目标账户</th>
+                    <th>操作</th>
+                    <th>详情</th>
+                  </tr>
+                </thead>
+                <tbody id="log-rows"></tbody>
+              </table>
+            </div>
           </div>
         </section>
       </main>
