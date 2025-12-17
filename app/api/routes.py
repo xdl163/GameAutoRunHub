@@ -333,6 +333,7 @@ async def list_devices(
     task_id: int | None = None,
     status: DeviceStatusEnum | None = None,
     idle_only: bool = False,
+    username: str | None = None,
     current=Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -344,6 +345,7 @@ async def list_devices(
         task_id=task_id,
         status=status,
         idle_only=idle_only,
+        creator_username=username,
     )
 
 

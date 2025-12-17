@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.device import Device
 from app.models.enums import DeviceStatusEnum
 from app.models.task import Task
+from app.models.user import User
 
 
 def get_by_id(db: Session, device_pk: int) -> Optional[Device]:
@@ -23,11 +24,21 @@ def list_devices(
     task_id: int | None = None,
     status: DeviceStatusEnum | None = None,
     idle_only: bool = False,
+    created_by: int | None = None,
+    creator_username: str | None = None,
 ) -> List[Device]:
     stmt = select(Device)
 
     if task_id is not None:
         stmt = stmt.join(Device.tasks).where(Task.id == task_id)
+
+    if creator_username:
+        stmt = stmt.join(User, Device.created_by == User.id).where(
+            User.username.contains(creator_username)
+        )
+
+    if created_by is not None:
+        stmt = stmt.where(Device.created_by == created_by)
 
     if device_id:
         stmt = stmt.where(Device.device_id.contains(device_id))

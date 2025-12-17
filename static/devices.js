@@ -28,11 +28,13 @@
     const taskIdRaw = document.querySelector("#filter-task-id").value.trim();
     const status = document.querySelector("#filter-status").value;
     const idleOnly = document.querySelector("#filter-idle-only").checked;
+    const creatorUsername = document.querySelector("#filter-username")?.value.trim();
 
     if (deviceId) params.set("device_id", deviceId);
     if (taskIdRaw) params.set("task_id", Number(taskIdRaw));
     if (status) params.set("status", status);
     if (idleOnly) params.set("idle_only", "true");
+    if (creatorUsername && canManage()) params.set("username", creatorUsername);
 
     const resp = await apiFetch(`/api/devices?${params.toString()}`);
     if (!resp.ok) {
@@ -223,6 +225,8 @@
       document.querySelector("#filter-task-id").value = "";
       document.querySelector("#filter-status").value = "";
       document.querySelector("#filter-idle-only").checked = false;
+      const usernameField = document.querySelector("#filter-username");
+      if (usernameField) usernameField.value = "";
       refreshDevices();
     });
     document.querySelector("#filter-idle-only").addEventListener("change", refreshDevices);
@@ -236,6 +240,8 @@
 
     if (!canManage()) {
       document.querySelector("#open-create-modal").disabled = true;
+      const usernameField = document.querySelector("#filter-username-field");
+      if (usernameField) usernameField.style.display = "none";
     }
 
     bindEvents();
