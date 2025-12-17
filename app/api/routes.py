@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user, get_db
 from app.models.enums import RoleEnum
 from app.models.user import User
-from app.service import user_service
+from app.service import config_service, user_service
 
 router = APIRouter(prefix="/api")
 
@@ -55,6 +55,11 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     user: UserRead
+
+
+class GlobalParams(BaseModel):
+    default_score_rate: int
+    default_multiplier: float
 
 
 @router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
@@ -119,6 +124,34 @@ async def get_menus(current=Depends(get_current_user)) -> Dict[str, List[Dict]]:
     }
 
     return {"topbar": topbar, "sidebar": sidebar}
+
+
+@router.get(
+    "/system/global",
+    response_model=GlobalParams,
+    summary="获取全局参数（管理员及以上）",
+    dependencies=[Depends(get_current_user)],
+)
+async def get_global_params(current=Depends(get_current_user)):
+    user: User = current["user"]
+    params = config_service.get_global_params(requester=user)
+    return GlobalParams(**params)
+
+
+@router.put(
+    "/system/global",
+    response_model=GlobalParams,
+    summary="更新全局参数（管理员及以上）",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_global_params(payload: GlobalParams, current=Depends(get_current_user)):
+    user: User = current["user"]
+    params = config_service.update_global_params(
+        requester=user,
+        default_score_rate=payload.default_score_rate,
+        default_multiplier=payload.default_multiplier,
+    )
+    return GlobalParams(**params)
 
 
 @router.post(

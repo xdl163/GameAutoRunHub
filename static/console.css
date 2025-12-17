@@ -255,6 +255,37 @@ button.primary {
   background: #d93025;
 }
 
+.form-grid {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field input {
+  padding: 10px 12px;
+  border: 1px solid #dce4ec;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: #4c7dff;
+  box-shadow: 0 0 0 3px rgba(76, 125, 255, 0.15);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;

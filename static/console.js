@@ -132,7 +132,6 @@ function buildMenu(role, activeKey) {
   const allowed = items.filter((item) => {
     if (item.key === "users" && !["admin", "super_admin"].includes(role)) return false;
     if (item.key === "logs" && !["admin", "super_admin"].includes(role)) return false;
-    if (item.key === "system" && role !== "super_admin") return false;
     return true;
   });
 
