@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user, get_db
-from app.models.enums import RoleEnum
+from app.models.enums import DevicePlatformEnum, DeviceStatusEnum, RoleEnum
 from app.models.user import User
-from app.service import account_log_service, config_service, user_service
+from app.service import account_log_service, config_service, device_service, user_service
 
 router = APIRouter(prefix="/api")
 
@@ -82,6 +82,35 @@ class SimpleLogRead(BaseModel):
     detail: str | None
     created_at: str
     performer_username: str
+
+
+class DeviceCreate(BaseModel):
+    device_id: str
+    platform: DevicePlatformEnum
+    config: str | None = None
+    remark: str | None = None
+
+
+class DeviceUpdate(BaseModel):
+    platform: DevicePlatformEnum | None = None
+    status: DeviceStatusEnum | None = None
+    config: str | None = None
+    remark: str | None = None
+
+
+class DeviceRead(BaseModel):
+    id: int
+    device_id: str
+    platform: DevicePlatformEnum
+    status: DeviceStatusEnum
+    config: str | None
+    remark: str | None
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 @router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
@@ -284,6 +313,86 @@ async def remove_user(user_id: int, current=Depends(get_current_user), db=Depend
     if user.id == user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能删除自己")
     user_service.delete_user(db, requester=user, target_id=user_id)
+    return None
+
+
+@router.get(
+    "/devices",
+    response_model=List[DeviceRead],
+    summary="查询设备列表",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_devices(
+    device_id: str | None = None,
+    task_id: int | None = None,
+    status: DeviceStatusEnum | None = None,
+    idle_only: bool = False,
+    current=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    user: User = current["user"]
+    return device_service.list_devices(
+        db,
+        requester=user,
+        device_id=device_id,
+        task_id=task_id,
+        status=status,
+        idle_only=idle_only,
+    )
+
+
+@router.get(
+    "/devices/idle",
+    response_model=List[DeviceRead],
+    summary="查看空闲设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_idle_devices(current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    return device_service.list_devices(db, requester=user, idle_only=True)
+
+
+@router.post(
+    "/devices",
+    response_model=DeviceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="新建设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def create_device(payload: DeviceCreate, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    return device_service.create_device(
+        db,
+        requester=user,
+        device_id=payload.device_id,
+        platform=payload.platform,
+        config=payload.config,
+        remark=payload.remark,
+    )
+
+
+@router.put(
+    "/devices/{device_id}",
+    response_model=DeviceRead,
+    summary="修改设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_device(
+    device_id: int, payload: DeviceUpdate, current=Depends(get_current_user), db=Depends(get_db)
+):
+    user: User = current["user"]
+    return device_service.update_device(db, requester=user, device_pk=device_id, **payload.dict(exclude_unset=True))
+
+
+@router.delete(
+    "/devices/{device_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除设备",
+    dependencies=[Depends(get_current_user)],
+)
+async def delete_device(device_id: int, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    device_service.delete_device(db, requester=user, device_pk=device_id)
     return None
 
 
