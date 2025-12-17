@@ -1,7 +1,7 @@
 """FastAPI 依赖注入模块。"""
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -19,12 +19,18 @@ def get_db():
 
 def get_current_user(
     authorization: str | None = Header(None, alias="Authorization"),
+    token_cookie: str | None = Cookie(None, alias="access_token"),
     db: Session = Depends(get_db),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+    elif token_cookie:
+        token = token_cookie
+
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="缺少认证信息")
 
-    token = authorization.split(" ", 1)[1]
     user_id = get_user_id_from_token(token)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效或过期的令牌")
