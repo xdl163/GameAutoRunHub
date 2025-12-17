@@ -4,25 +4,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
-from app.core.security import hash_password
+from app.api.deps import get_current_user, get_db
 from app.models.enums import RoleEnum
 from app.models.user import User
+from app.service import user_service
 
 router = APIRouter(prefix="/api")
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 class UserCreate(BaseModel):
@@ -45,18 +35,53 @@ class UserRead(BaseModel):
 
 
 class PasswordUpdate(BaseModel):
-    username: str
     new_password: str
+    old_password: str | None = None
 
 
-@router.get("/health", summary="健康检查")
+class RoleUpdate(BaseModel):
+    role: RoleEnum
+
+
+class StatusUpdate(BaseModel):
+    is_active: bool
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    user: UserRead
+
+
+@router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
+async def login(payload: LoginRequest, db=Depends(get_db)):
+    result = user_service.authenticate(db, username=payload.username, password=payload.password)
+    return LoginResponse(token=result.token, user=result.user)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, summary="注销并回收令牌")
+async def logout(current=Depends(get_current_user)):
+    user_service.logout(current["token"])
+    return None
+
+
+@router.get("/health", summary="健康检查", dependencies=[Depends(get_current_user)])
 async def health_check():
-    """健康检查示例接口。"""
     return {"status": "ok"}
 
 
-@router.get("/layout/menus", summary="根据角色返回可见菜单")
-async def get_menus(role: RoleEnum = Query(..., description="当前登录角色")) -> Dict[str, List[Dict]]:
+@router.get(
+    "/layout/menus",
+    summary="根据角色返回可见菜单",
+    dependencies=[Depends(get_current_user)],
+)
+async def get_menus(current=Depends(get_current_user)) -> Dict[str, List[Dict]]:
+    user: User = current["user"]
+
     def base_sidebar() -> List[Dict]:
         return [
             {"key": "tasks", "label": "任务管理"},
@@ -66,7 +91,7 @@ async def get_menus(role: RoleEnum = Query(..., description="当前登录角色"
 
     sidebar = base_sidebar()
 
-    if role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+    if user.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
         sidebar.insert(2, {"key": "users", "label": "用户管理"})
         sidebar.insert(
             3,
@@ -82,13 +107,13 @@ async def get_menus(role: RoleEnum = Query(..., description="当前登录角色"
         )
 
         system_children = [{"key": "global_config", "label": "全局参数配置"}]
-        if role is RoleEnum.SUPER_ADMIN:
+        if user.role is RoleEnum.SUPER_ADMIN:
             system_children.insert(0, {"key": "platform_config", "label": "平台级配置"})
 
         sidebar.append({"key": "system", "label": "系统配置", "children": system_children})
 
     topbar = {
-        "current_user": {"username": "当前用户", "role": role},
+        "current_user": {"username": user.username, "role": user.role},
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "actions": ["修改密码", "退出登录"],
     }
@@ -101,54 +126,86 @@ async def get_menus(role: RoleEnum = Query(..., description="当前登录角色"
     response_model=UserRead,
     summary="创建用户（管理员及以上）",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
 )
-async def create_user(
-    payload: UserCreate,
-    requester_role: RoleEnum = Query(..., description="当前操作人角色"),
-    db: Session = Depends(get_db),
-):
-    if requester_role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限创建用户")
-
-    if payload.role is RoleEnum.SUPER_ADMIN and requester_role is not RoleEnum.SUPER_ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可创建超级管理员")
-
-    existing = db.scalars(select(User).where(User.username == payload.username)).first()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="用户名已存在")
-
-    user = User(
+async def create_user(payload: UserCreate, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    created = user_service.create_user(
+        db,
+        requester=user,
         username=payload.username,
         display_name=payload.display_name,
-        password_hash=hash_password(payload.password),
+        password=payload.password,
         role=payload.role,
         is_active=payload.is_active,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    return created
 
 
-@router.get("/users", response_model=List[UserRead], summary="用户列表（管理员及以上）")
-async def list_users(
-    requester_role: RoleEnum = Query(..., description="当前操作人角色"),
-    db: Session = Depends(get_db),
+@router.get(
+    "/users",
+    response_model=List[UserRead],
+    summary="用户列表（管理员及以上）",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_users(current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    return user_service.list_users(db, requester=user)
+
+
+@router.patch(
+    "/users/password",
+    summary="修改个人密码",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_user)],
+)
+async def update_password(payload: PasswordUpdate, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    user_service.update_password(
+        db,
+        requester=user,
+        new_password=payload.new_password,
+        old_password=payload.old_password,
+    )
+    return None
+
+
+@router.patch(
+    "/users/{user_id}/role",
+    response_model=UserRead,
+    summary="更新角色（仅超级管理员）",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_role(user_id: int, payload: RoleUpdate, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    return user_service.change_role(db, requester=user, target_id=user_id, role=payload.role)
+
+
+@router.patch(
+    "/users/{user_id}/status",
+    response_model=UserRead,
+    summary="切换用户状态",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_status(
+    user_id: int,
+    payload: StatusUpdate,
+    current=Depends(get_current_user),
+    db=Depends(get_db),
 ):
-    if requester_role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限查看用户")
-
-    users = db.scalars(select(User)).all()
-    return users
+    user: User = current["user"]
+    return user_service.change_status(db, requester=user, target_id=user_id, is_active=payload.is_active)
 
 
-@router.patch("/users/password", summary="修改账户密码", status_code=status.HTTP_204_NO_CONTENT)
-async def update_password(payload: PasswordUpdate, db: Session = Depends(get_db)):
-    user = db.scalars(select(User).where(User.username == payload.username)).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
-
-    user.password_hash = hash_password(payload.new_password)
-    db.add(user)
-    db.commit()
+@router.delete(
+    "/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除用户",
+    dependencies=[Depends(get_current_user)],
+)
+async def remove_user(user_id: int, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    if user.id == user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能删除自己")
+    user_service.delete_user(db, requester=user, target_id=user_id)
     return None

@@ -1,13 +1,12 @@
 (function () {
-  const { initConsoleShell, loadUsers, saveUsers, getCurrentUser, setCurrentUser } = window.ConsoleShared;
+  const { initConsoleShell, apiFetch } = window.ConsoleShared;
 
   function bindUpdatePassword() {
     const btn = document.querySelector("#update-self-password");
     const message = document.querySelector("#self-password-msg");
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const oldPwd = document.querySelector("#old-password").value.trim();
       const newPwd = document.querySelector("#new-self-password").value.trim();
-      const current = getCurrentUser();
 
       if (!oldPwd || !newPwd) {
         message.textContent = "请填写完整密码信息";
@@ -16,26 +15,28 @@
         return;
       }
 
-      if (current.password !== oldPwd) {
-        message.textContent = "旧密码不正确";
-        message.classList.remove("success");
-        message.classList.add("error");
-        return;
+      message.textContent = "";
+      btn.disabled = true;
+      try {
+        const resp = await apiFetch("/api/users/password", {
+          method: "PATCH",
+          body: JSON.stringify({ new_password: newPwd, old_password: oldPwd }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          message.textContent = data.detail || "密码修改失败";
+          message.classList.remove("success");
+          message.classList.add("error");
+          return;
+        }
+        message.textContent = "密码已更新";
+        message.classList.remove("error");
+        message.classList.add("success");
+        document.querySelector("#old-password").value = "";
+        document.querySelector("#new-self-password").value = "";
+      } finally {
+        btn.disabled = false;
       }
-
-      const users = loadUsers();
-      const idx = users.findIndex((u) => u.username === current.username);
-      if (idx >= 0) {
-        users[idx].password = newPwd;
-        saveUsers(users);
-        setCurrentUser(users[idx]);
-      }
-
-      message.textContent = "密码已更新（仅本地演示）";
-      message.classList.remove("error");
-      message.classList.add("success");
-      document.querySelector("#old-password").value = "";
-      document.querySelector("#new-self-password").value = "";
     });
   }
 

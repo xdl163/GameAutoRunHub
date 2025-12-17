@@ -43,20 +43,9 @@ const PermissionMenus = {
 };
 
 const STORAGE_KEYS = {
-  users: "garh_users",
-  current: "garh_current_user",
+  session: "garh_session",
   tasks: "garh_tasks",
 };
-
-const DEFAULT_USERS = [
-  {
-    username: "admin",
-    displayName: "超级管理员",
-    role: "super_admin",
-    password: "xu12345678gh",
-    isActive: true,
-  },
-];
 
 const DEFAULT_TASKS = [
   { id: "T-1001", name: "每日构建", status: "已完成", updated: "2024-10-01 09:30" },
@@ -65,39 +54,56 @@ const DEFAULT_TASKS = [
 ];
 
 function ensureSeedData() {
-  if (!localStorage.getItem(STORAGE_KEYS.users)) {
-    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(DEFAULT_USERS));
-  }
   if (!localStorage.getItem(STORAGE_KEYS.tasks)) {
     localStorage.setItem(STORAGE_KEYS.tasks, JSON.stringify(DEFAULT_TASKS));
   }
 }
 
-function loadUsers() {
-  const raw = localStorage.getItem(STORAGE_KEYS.users);
+function loadTasks() {
+  const raw = localStorage.getItem(STORAGE_KEYS.tasks);
   return raw ? JSON.parse(raw) : [];
 }
 
-function saveUsers(list) {
-  localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(list));
+function setSession(session) {
+  localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
 }
 
-function getCurrentUser() {
-  const raw = localStorage.getItem(STORAGE_KEYS.current);
+function getSession() {
+  const raw = localStorage.getItem(STORAGE_KEYS.session);
   return raw ? JSON.parse(raw) : null;
 }
 
-function setCurrentUser(user) {
-  localStorage.setItem(STORAGE_KEYS.current, JSON.stringify(user));
+function clearSession() {
+  localStorage.removeItem(STORAGE_KEYS.session);
+}
+
+function getCurrentUser() {
+  const session = getSession();
+  return session ? session.user : null;
 }
 
 function requireAuth() {
-  const user = getCurrentUser();
-  if (!user) {
+  const session = getSession();
+  if (!session || !session.token) {
     window.location.href = "/";
     return null;
   }
-  return user;
+  return session.user;
+}
+
+async function apiFetch(url, options = {}) {
+  const session = getSession();
+  const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+  if (session?.token) {
+    headers["Authorization"] = `Bearer ${session.token}`;
+  }
+  const resp = await fetch(url, { ...options, headers });
+  if (resp.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    return Promise.reject(new Error("未认证"));
+  }
+  return resp;
 }
 
 function buildMenu(role, activeKey) {
@@ -178,9 +184,15 @@ function renderTopbar(user) {
 function bindTopbarActions() {
   const logoutBtn = document.querySelector("#logout-btn");
   if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEYS.current);
-      window.location.href = "/";
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await apiFetch("/api/logout", { method: "POST" });
+      } catch (err) {
+        console.warn(err);
+      } finally {
+        clearSession();
+        window.location.href = "/";
+      }
     });
   }
 
@@ -214,23 +226,15 @@ function requireRole(user, roles = []) {
   return true;
 }
 
-function loadTasks() {
-  const raw = localStorage.getItem(STORAGE_KEYS.tasks);
-  return raw ? JSON.parse(raw) : [];
-}
-
-function saveTasks(tasks) {
-  localStorage.setItem(STORAGE_KEYS.tasks, JSON.stringify(tasks));
-}
-
 window.ConsoleShared = {
-  initConsoleShell,
-  requireRole,
-  loadUsers,
-  saveUsers,
-  getCurrentUser,
-  setCurrentUser,
-  loadTasks,
-  saveTasks,
   RoleLabels,
+  getSession,
+  setSession,
+  clearSession,
+  getCurrentUser,
+  requireAuth,
+  requireRole,
+  initConsoleShell,
+  apiFetch,
+  loadTasks,
 };
