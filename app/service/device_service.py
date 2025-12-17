@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.enums import DevicePlatformEnum, DeviceStatusEnum, RoleEnum
 from app.models.user import User
 from app.repository import device_repository
+from app.service import device_operation_log_service
 
 
 def _require_admin(user: User):
@@ -25,7 +26,7 @@ def create_device(
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备ID已存在")
 
-    return device_repository.create_device(
+    device = device_repository.create_device(
         db,
         device_id=device_id,
         platform=platform,
@@ -33,6 +34,16 @@ def create_device(
         remark=remark,
         created_by=requester.id,
     )
+
+    device_operation_log_service.log_action(
+        db,
+        performer=requester,
+        device=device,
+        action="create_device",
+        detail=f"新建设备 {device.device_id}",
+    )
+
+    return device
 
 
 def list_devices(
@@ -68,16 +79,37 @@ def update_device(
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
 
+    changes = []
+
     if platform:
+        if device.platform != platform:
+            changes.append(f"platform: {device.platform} -> {platform}")
         device.platform = platform
     if status:
+        if device.status != status:
+            changes.append(f"status: {device.status} -> {status}")
         device.status = status
     if config is not None:
+        if device.config != config:
+            changes.append("config updated")
         device.config = config
     if remark is not None:
+        if device.remark != remark:
+            changes.append("remark updated")
         device.remark = remark
 
-    return device_repository.save(db, device)
+    updated = device_repository.save(db, device)
+
+    detail = "；".join(changes) if changes else "未变更字段"
+    device_operation_log_service.log_action(
+        db,
+        performer=requester,
+        device=updated,
+        action="update_device",
+        detail=f"修改设备 {updated.device_id}：{detail}",
+    )
+
+    return updated
 
 
 def delete_device(db: Session, *, requester: User, device_pk: int):
@@ -85,6 +117,14 @@ def delete_device(db: Session, *, requester: User, device_pk: int):
     device = device_repository.get_by_id(db, device_pk)
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+
+    device_operation_log_service.log_action(
+        db,
+        performer=requester,
+        device=device,
+        action="delete_device",
+        detail=f"删除设备 {device.device_id}",
+    )
     device_repository.delete(db, device)
 
 

@@ -10,7 +10,13 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user, get_db
 from app.models.enums import DevicePlatformEnum, DeviceStatusEnum, RoleEnum
 from app.models.user import User
-from app.service import account_log_service, config_service, device_service, user_service
+from app.service import (
+    account_log_service,
+    config_service,
+    device_operation_log_service,
+    device_service,
+    user_service,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -449,18 +455,19 @@ async def list_task_logs(current=Depends(get_current_user)):
     summary="设备池操作日志（管理员及以上）",
     dependencies=[Depends(get_current_user)],
 )
-async def list_device_logs(current=Depends(get_current_user)):
+async def list_device_logs(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    if user.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
+    logs = device_operation_log_service.list_logs(db=db, requester=user)
 
-    sample = [
-        SimpleLogRead(
-            id=1,
-            action="设备绑定",
-            detail="设备 D-42 绑定到任务池",
-            created_at=datetime.now(timezone.utc).isoformat(),
-            performer_username=user.username,
+    results: List[SimpleLogRead] = []
+    for log in logs:
+        results.append(
+            SimpleLogRead(
+                id=log.id,
+                action=log.action,
+                detail=log.detail,
+                created_at=log.created_at.isoformat(),
+                performer_username=log.user.username if log.user else "",
+            )
         )
-    ]
-    return sample
+    return results
