@@ -55,7 +55,7 @@
     rows.innerHTML = "";
 
     if (!devices.length) {
-      rows.innerHTML = `<tr><td colspan="7" style="text-align:center" class="muted">暂无数据</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="8" style="text-align:center" class="muted">暂无数据</td></tr>`;
       return;
     }
 
@@ -63,6 +63,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${device.device_id}</td>
+        <td>${device.created_by_username || "-"}</td>
         <td>${PlatformLabels[device.platform] || device.platform}</td>
         <td>${StatusLabels[device.status] || device.status}</td>
         <td>${device.remark || "-"}</td>
@@ -111,15 +112,15 @@
 
   async function refreshDevices() {
     const rows = document.querySelector("#device-rows");
-    rows.innerHTML = `<tr><td colspan="7" style="text-align:center" class="muted">加载中...</td></tr>`;
-    try {
-      devicesCache = await fetchDevices();
-      updateSummary(devicesCache);
-      renderDevices(devicesCache);
-    } catch (err) {
-      rows.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="8" style="text-align:center" class="muted">加载中...</td></tr>`;
+      try {
+        devicesCache = await fetchDevices();
+        updateSummary(devicesCache);
+        renderDevices(devicesCache);
+      } catch (err) {
+        rows.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
+      }
     }
-  }
 
   async function handleCreate() {
     const errorEl = document.querySelector("#create-device-error");

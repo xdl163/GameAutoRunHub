@@ -114,11 +114,36 @@ class DeviceRead(BaseModel):
     config: str | None
     remark: str | None
     created_by: int
+    created_by_username: str | None = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+def _build_user_map(db, devices: List):
+    user_ids = {getattr(d, "created_by", None) for d in devices if getattr(d, "created_by", None)}
+    if not user_ids:
+        return {}
+    fetched = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+    return {u.id: u.username for u in fetched}
+
+
+def _as_device_read(device, user_map: Dict[int, str] | None = None) -> DeviceRead:
+    user_map = user_map or {}
+    return DeviceRead(
+        id=device.id,
+        device_id=device.device_id,
+        platform=device.platform,
+        status=device.status,
+        config=device.config,
+        remark=device.remark,
+        created_by=device.created_by,
+        created_by_username=user_map.get(device.created_by),
+        created_at=device.created_at,
+        updated_at=device.updated_at,
+    )
 
 
 @router.post("/login", response_model=LoginResponse, summary="登录获取令牌")
@@ -340,7 +365,7 @@ async def list_devices(
     db=Depends(get_db),
 ):
     user: User = current["user"]
-    return device_service.list_devices(
+    devices = device_service.list_devices(
         db,
         requester=user,
         device_id=device_id,
@@ -349,6 +374,8 @@ async def list_devices(
         idle_only=idle_only,
         creator_username=username,
     )
+    user_map = _build_user_map(db, devices)
+    return [_as_device_read(device, user_map) for device in devices]
 
 
 @router.get(
@@ -359,7 +386,9 @@ async def list_devices(
 )
 async def list_idle_devices(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    return device_service.list_devices(db, requester=user, idle_only=True)
+    devices = device_service.list_devices(db, requester=user, idle_only=True)
+    user_map = _build_user_map(db, devices)
+    return [_as_device_read(device, user_map) for device in devices]
 
 
 @router.post(
@@ -371,7 +400,7 @@ async def list_idle_devices(current=Depends(get_current_user), db=Depends(get_db
 )
 async def create_device(payload: DeviceCreate, current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    return device_service.create_device(
+    device = device_service.create_device(
         db,
         requester=user,
         device_id=payload.device_id,
@@ -379,6 +408,7 @@ async def create_device(payload: DeviceCreate, current=Depends(get_current_user)
         config=payload.config,
         remark=payload.remark,
     )
+    return _as_device_read(device, {user.id: user.username})
 
 
 @router.put(
@@ -391,7 +421,11 @@ async def update_device(
     device_id: int, payload: DeviceUpdate, current=Depends(get_current_user), db=Depends(get_db)
 ):
     user: User = current["user"]
-    return device_service.update_device(db, requester=user, device_pk=device_id, **payload.dict(exclude_unset=True))
+    device = device_service.update_device(
+        db, requester=user, device_pk=device_id, **payload.dict(exclude_unset=True)
+    )
+    creator_map = _build_user_map(db, [device])
+    return _as_device_read(device, creator_map)
 
 
 @router.delete(
