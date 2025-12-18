@@ -1,0 +1,97 @@
+/* ===============================
+   分组模块独立滚动（左侧单独滑动）
+   =============================== */
+
+/* 1) 整体布局：主内容区占满剩余高度 */
+.layout {
+    height: 100vh;             /* 让布局有确定高度 */
+    overflow: hidden;          /* 防止外层出现双滚动条 */
+}
+
+/* 如果 topbar 是固定高度（常见 56~64），用 padding/offset 保证不被遮挡
+   若你已有 topbar sticky/固定逻辑，请按实际情况调整这段 */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* 2) 让 panel-body 的任务区域拿到可计算高度 */
+.panel-body.task-layout {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+
+    /* 关键：保证内部滚动容器能正常工作 */
+    min-height: 0;
+}
+
+/* 3) 左侧分组栏：自身不滚动，把滚动交给 group-list */
+.task-sidebar {
+    flex: 0 0 280px;          /* 你也可以改成 260/300 */
+    min-width: 240px;
+    max-width: 320px;
+    min-height: 0;            /* 关键：允许子元素出现 overflow 滚动 */
+}
+
+/* 4) 分组卡片：列布局，头部固定，列表区域滚动 */
+.group-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;            /* 关键 */
+}
+
+/* 分组头部固定在卡片顶部（滚动时不动） */
+.group-card .card-header {
+    flex: 0 0 auto;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+
+    /* 避免滚动时透出内容（按你的主题色调整） */
+    background: var(--card, #121a26);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 分组列表：独立滚动区域 */
+#group-list.group-list {
+    flex: 1 1 auto;
+    min-height: 0;            /* 关键 */
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    /* 让滚动更顺手一点 */
+    overscroll-behavior: contain;
+    padding-right: 6px;       /* 给滚动条留点空间，避免遮挡内容 */
+}
+
+/* 5) 右侧任务区：保持你原有 task-main-scroll 滚动逻辑 */
+.task-main {
+    flex: 1 1 auto;
+    min-height: 0;            /* 关键：否则右侧也可能滚不起来 */
+}
+
+.task-main-scroll {
+    height: 100%;
+    overflow-y: auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+}
+
+/* 可选：美化滚动条（Windows/Chromium 有效） */
+#group-list.group-list::-webkit-scrollbar,
+.task-main-scroll::-webkit-scrollbar {
+    width: 10px;
+}
+#group-list.group-list::-webkit-scrollbar-thumb,
+.task-main-scroll::-webkit-scrollbar-thumb {
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    background-color: rgba(255, 255, 255, 0.18);
+}
+#group-list.group-list::-webkit-scrollbar-thumb:hover,
+.task-main-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.28);
+}

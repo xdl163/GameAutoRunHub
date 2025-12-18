@@ -53,9 +53,6 @@ class TaskRead(BaseModel):
     class Config:
         from_attributes = True
 
-    class Config:
-        from_attributes = True
-
 
 class TaskStatusChange(BaseModel):
     action: str
