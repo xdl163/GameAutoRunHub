@@ -172,6 +172,8 @@
   }
 
   function ensureDefaultGroups() {
+    // 仅在本地无分组时创建当前用户的默认分组，避免为其他用户重复注入
+    if (taskState.groups?.length) return;
     const defaults = [
       { id: "g-default", name: "未分组", description: "默认分组，删除分组时任务会回收至此" },
       { id: "g-completed", name: "已完成", description: "终止/完成任务归档区" },
@@ -306,7 +308,7 @@
           name: g.name,
           description: g.description || "",
           is_default: Boolean(g.is_default),
-          owner: currentUser?.username || g.owner || "",
+          owner: g.owner || g.created_by || g.created_by_username || "",
         }));
         taskState.groups = mapped;
         saveTaskState(taskState);
