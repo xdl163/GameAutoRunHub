@@ -15,6 +15,7 @@
   let userLoadPromise = null;
   const deviceOptionsCache = new Map();
   const deviceLoadPromises = new Map();
+  let realtimeTimer = null;
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -50,8 +51,10 @@
   const taskDefaults = {
     scoreRate: 7000,
     multiplier: 1.0,
+    initialMultiplier: 1.0,
   };
   const COMPLETED_GROUP_KEYWORDS = ["g-completed", "已完成"];
+  let groupLoadPromise = null;
 
   async function loadUserOptions() {
     try {
@@ -119,16 +122,58 @@
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
   }
 
-  function minutesToDisplay(minutes) {
-    if (!minutes || minutes <= 0) return "0分钟";
-    const h = Math.floor(minutes / 60);
-    const m = Math.round(minutes % 60);
-    if (h && m) return `${h}小时${m}分钟`;
-    if (h) return `${h}小时`;
-    return `${m}分钟`;
+  function secondsToDisplay(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "0秒";
+    const total = Math.max(Math.floor(seconds), 0);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const parts = [];
+    if (h) parts.push(`${h}小时`);
+    if (m || h) parts.push(`${m}分`);
+    parts.push(`${s}秒`);
+    return parts.join("");
+  }
+
+  function formatInteger(value, fallback = 0) {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.round(value).toLocaleString();
+  }
+
+  function toDateOrNow(value, now = new Date()) {
+    const d = value ? new Date(value) : null;
+    return d && !Number.isNaN(d.getTime()) ? d : now;
+  }
+
+  function calculatePausedSeconds(task, now = new Date()) {
+    const basePaused = Number(task.paused_seconds || 0);
+    if (task.status !== "paused") return Math.max(basePaused, 0);
+    const pausedAt = task.paused_at ? new Date(task.paused_at) : null;
+    if (!pausedAt || Number.isNaN(pausedAt.getTime())) return Math.max(basePaused, 0);
+    const extra = Math.max(Math.floor((now.getTime() - pausedAt.getTime()) / 1000), 0);
+    return Math.max(basePaused + extra, 0);
+  }
+
+  function calculationAnchor(task, now = new Date()) {
+    if (["completed", "terminated"].includes(task.status)) {
+      if (task.end_time) return toDateOrNow(task.end_time, now);
+      if (task.updated_at) return toDateOrNow(task.updated_at, now);
+    }
+    return now;
+  }
+
+  function elapsedActiveSeconds(task, now = new Date()) {
+    if (task.status === "pending") return 0;
+    const start = toDateOrNow(task.start_time, now);
+    const anchor = calculationAnchor(task, now);
+    const elapsed = Math.max(Math.floor((anchor.getTime() - start.getTime()) / 1000), 0);
+    const paused = calculatePausedSeconds(task, anchor);
+    return Math.max(elapsed - paused, 0);
   }
 
   function ensureDefaultGroups() {
+    // 仅在本地无分组时创建当前用户的默认分组，避免为其他用户重复注入
+    if (taskState.groups?.length) return;
     const defaults = [
       { id: "g-default", name: "未分组", description: "默认分组，删除分组时任务会回收至此" },
       { id: "g-completed", name: "已完成", description: "终止/完成任务归档区" },
@@ -140,6 +185,8 @@
           ...item,
           is_default: true,
           owner: currentUser?.username || "system",
+          owner_username: currentUser?.username || "system",
+          owner_display_name: currentUser?.display_name || currentUser?.username || "system",
           accessors: [],
         });
       }
@@ -155,45 +202,48 @@
     renderTasks();
   }
 
-  function computeScoreMeta(task) {
+  function computeScoreMeta(task, now = new Date()) {
     const detail = task.score || {};
     const target = Number(detail.target_points || 0);
-    const current = Number(detail.current_points || 0);
+    const baseCurrent = Number(detail.current_points || 0);
     const rate = Number(detail.point_rate || 0) || 7000;
+    const ratePerSecond = rate / 3600;
+    const activeSeconds = elapsedActiveSeconds(task, now);
+    const gained = ratePerSecond > 0 ? ratePerSecond * activeSeconds : 0;
+    const current = Math.min(target || Infinity, baseCurrent + gained);
     const remainingPoints = Math.max(target - current, 0);
-    const remainingHours = remainingPoints / rate;
-    const remainingMinutes = Math.round(remainingHours * 60);
-    const start = task.start_time ? new Date(task.start_time) : new Date();
-    const end = new Date(start.getTime() + remainingHours * 3600 * 1000);
+    const remainingSeconds = ratePerSecond > 0 ? Math.ceil(remainingPoints / ratePerSecond) : 0;
+    const end = new Date(now.getTime() + remainingSeconds * 1000);
     return {
       target,
       current,
       rate,
-      remainingMinutes,
+      remainingSeconds,
       end,
     };
   }
 
-  function computeMultiplierMeta(task) {
+  function computeMultiplierMeta(task, now = new Date()) {
     const detail = task.multiplier || {};
     const duration = Number(detail.duration_hours || 0);
-    const start = task.start_time ? new Date(task.start_time) : new Date();
-    const end = new Date(start.getTime() + duration * 3600 * 1000);
-    const now = new Date();
-    const remainingMinutes = Math.max(Math.round((end.getTime() - now.getTime()) / 60000), 0);
-    const elapsedSeconds = Math.max(Math.round((now.getTime() - start.getTime()) / 1000), 0);
-    const currentMultiplier = (detail.current_multiplier || 1) + elapsedSeconds * 1.15;
-    return { duration, end, remainingMinutes, currentMultiplier };
+    const durationSeconds = duration * 3600;
+    const activeSeconds = elapsedActiveSeconds(task, now);
+    const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
+    const end = new Date(now.getTime() + remainingSeconds * 1000);
+    const initialMultiplier = Number(detail.initial_multiplier ?? detail.current_multiplier ?? 1);
+    const growthPerSecond = Number(detail.current_multiplier ?? 0);
+    const currentMultiplier = initialMultiplier + activeSeconds * growthPerSecond;
+    return { duration, end, remainingSeconds, currentMultiplier, initialMultiplier, growthPerSecond };
   }
 
-  function computeChestMeta(task) {
+  function computeChestMeta(task, now = new Date()) {
     const detail = task.chest || {};
     const duration = Number(detail.duration_hours || 0);
-    const start = task.start_time ? new Date(task.start_time) : new Date();
-    const end = new Date(start.getTime() + duration * 3600 * 1000);
-    const now = new Date();
-    const remainingMinutes = Math.max(Math.round((end.getTime() - now.getTime()) / 60000), 0);
-    return { duration, end, remainingMinutes };
+    const durationSeconds = duration * 3600;
+    const activeSeconds = elapsedActiveSeconds(task, now);
+    const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
+    const end = new Date(now.getTime() + remainingSeconds * 1000);
+    return { duration, end, remainingSeconds };
   }
 
   function renderGroups() {
@@ -219,7 +269,7 @@
         <div>
           <strong>${group.name}</strong>
           <p class="muted">${group.description || "无描述"}</p>
-          <p class="muted mini">所属：${group.owner || "未指定"}</p>
+          <p class="muted mini">所属：${formatOwnerDisplay(group)}</p>
         </div>
         <div class="group-actions">
           <span class="badge">${count}</span>
@@ -246,6 +296,36 @@
       }
       list.appendChild(button);
     });
+  }
+
+  async function reloadGroupsFromServer() {
+    if (groupLoadPromise) return groupLoadPromise;
+    groupLoadPromise = (async () => {
+      try {
+        const resp = await apiFetch("/api/task-groups");
+        if (!resp.ok) throw new Error(`加载分组失败 ${resp.status}`);
+        const data = await resp.json();
+        const mapped = (data || []).map((g) => ({
+          id: String(g.id),
+          name: g.name,
+          description: g.description || "",
+          is_default: Boolean(g.is_default),
+          owner: g.owner_username || g.owner || g.created_by || "",
+          owner_username: g.owner_username || g.owner || g.created_by || "",
+          owner_display_name: g.owner_display_name || g.owner || "",
+        }));
+        taskState.groups = mapped;
+        saveTaskState(taskState);
+        renderGroups();
+        renderTasks();
+      } catch (err) {
+        console.warn("从服务端加载分组失败，使用本地数据", err);
+        renderGroups();
+      } finally {
+        groupLoadPromise = null;
+      }
+    })();
+    return groupLoadPromise;
   }
 
   function renderTypeFilter() {
@@ -286,7 +366,7 @@
     if (!field || !select) return;
     const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
     field.style.display = isAdmin ? "flex" : "none";
-    const owners = Array.from(new Set(taskState.groups.map((g) => g.owner).filter(Boolean)));
+    const owners = Array.from(new Set(taskState.groups.map((g) => g.owner_username || g.owner).filter(Boolean)));
     owners.unshift("all");
     select.innerHTML = owners
       .map((owner) => `<option value="${owner}">${owner === "all" ? "全部员工" : owner}</option>`)
@@ -304,6 +384,10 @@
     return `<span class="status-chip" style="background:${meta.color}1a;color:${meta.color}">
       <span class="dot" style="background:${meta.color}"></span>${meta.label}
     </span>`;
+  }
+
+  function formatOwnerDisplay(group) {
+    return group.owner_display_name || group.owner_username || group.owner || "未指定";
   }
 
   function typeChip(type) {
@@ -365,40 +449,76 @@
   }
 
   function renderTaskBody(task) {
+    const now = new Date();
     if (task.task_type === "score") {
-      const meta = computeScoreMeta(task);
+      const meta = computeScoreMeta(task, now);
       return `
         <div class="task-meta">
-          <div><span class="muted mini">当前积分</span><strong>${meta.current}</strong></div>
-          <div><span class="muted mini">目标积分</span><strong>${meta.target}</strong></div>
+          <div><span class="muted mini">当前积分</span><strong data-field="current-points" data-task-id="${task.id}">${formatInteger(meta.current)}</strong></div>
+          <div><span class="muted mini">目标积分</span><strong>${formatInteger(meta.target)}</strong></div>
           <div><span class="muted mini">积分速率</span><strong>${meta.rate}/小时</strong></div>
-          <div><span class="muted mini">剩余时间</span><strong>${minutesToDisplay(meta.remainingMinutes)}</strong></div>
-          <div><span class="muted mini">预计结束</span><strong>${fmtDate(meta.end)}</strong></div>
+          <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
+          <div><span class="muted mini">预计结束</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
         </div>
       `;
     }
     if (task.task_type === "multiplier") {
-      const meta = computeMultiplierMeta(task);
+      const meta = computeMultiplierMeta(task, now);
       return `
         <div class="task-meta">
           <div><span class="muted mini">时长</span><strong>${meta.duration}小时</strong></div>
-          <div><span class="muted mini">剩余时间</span><strong>${minutesToDisplay(meta.remainingMinutes)}</strong></div>
-          <div><span class="muted mini">截至时间</span><strong>${fmtDate(meta.end)}</strong></div>
-          <div><span class="muted mini">当前倍率</span><strong>${meta.currentMultiplier.toFixed(2)}</strong></div>
+          <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
+          <div><span class="muted mini">截至时间</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
+          <div><span class="muted mini">初始倍率</span><strong>${meta.initialMultiplier.toFixed(2)}</strong></div>
+          <div><span class="muted mini">倍率增长</span><strong>${meta.growthPerSecond.toFixed(2)}/秒</strong></div>
+          <div><span class="muted mini">当前倍率</span><strong data-field="current-multiplier" data-task-id="${task.id}">${meta.currentMultiplier.toFixed(2)}</strong></div>
         </div>
       `;
     }
     if (task.task_type === "chest") {
-      const meta = computeChestMeta(task);
+      const meta = computeChestMeta(task, now);
       return `
         <div class="task-meta">
           <div><span class="muted mini">时长</span><strong>${meta.duration}小时</strong></div>
-          <div><span class="muted mini">剩余时间</span><strong>${minutesToDisplay(meta.remainingMinutes)}</strong></div>
-          <div><span class="muted mini">截至时间</span><strong>${fmtDate(meta.end)}</strong></div>
+          <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
+          <div><span class="muted mini">截至时间</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
         </div>
       `;
     }
     return "";
+  }
+
+  function updateRealtimeFields() {
+    const now = new Date();
+    const tasks = filteredTasks();
+    tasks.forEach((task) => {
+      const setText = (field, value) => {
+        const el = document.querySelector(`[data-field="${field}"][data-task-id="${task.id}"]`);
+        if (el) el.textContent = value;
+      };
+      if (task.task_type === "score") {
+        const meta = computeScoreMeta(task, now);
+        setText("current-points", formatInteger(meta.current));
+        setText("remaining-time", secondsToDisplay(meta.remainingSeconds));
+        setText("end-time", fmtDate(meta.end));
+      }
+      if (task.task_type === "multiplier") {
+        const meta = computeMultiplierMeta(task, now);
+        setText("remaining-time", secondsToDisplay(meta.remainingSeconds));
+        setText("end-time", fmtDate(meta.end));
+        setText("current-multiplier", meta.currentMultiplier.toFixed(2));
+      }
+      if (task.task_type === "chest") {
+        const meta = computeChestMeta(task, now);
+        setText("remaining-time", secondsToDisplay(meta.remainingSeconds));
+        setText("end-time", fmtDate(meta.end));
+      }
+    });
+  }
+
+  function startRealtimeTicker() {
+    if (realtimeTimer) clearInterval(realtimeTimer);
+    realtimeTimer = setInterval(updateRealtimeFields, 1000);
   }
 
   function renderTasks() {
@@ -424,8 +544,7 @@
               ${typeChip(task.task_type)}
               ${statusChip(task.status)}
             </div>
-            <p class="muted mini">任务ID：${task.id} · 分组：${getGroupName(task.group_id)}</p>
-            <p class="muted mini">负责人：${task.owner || "未指定"} · 更新时间：${fmtDate(task.updated_at)}</p>
+            <p class="muted mini">任务ID：${task.id}</p>
           </div>
           <div class="task-device">${deviceLine(task)}</div>
         </div>
@@ -442,6 +561,7 @@
 
       grid.appendChild(card);
     });
+    updateRealtimeFields();
   }
 
   function getGroupName(id) {
@@ -616,6 +736,7 @@
     }
     if (task.task_type === "multiplier") {
       document.querySelector("#edit-multiplier-hours").value = task.multiplier?.duration_hours || 0;
+      document.querySelector("#edit-multiplier-initial").value = task.multiplier?.initial_multiplier ?? 1.0;
       document.querySelector("#edit-multiplier-current").value = task.multiplier?.current_multiplier || 1.0;
     }
     if (task.task_type === "chest") {
@@ -700,6 +821,10 @@
       if (payload.multiplier.duration_hours !== undefined) {
         task.multiplier.duration_hours = payload.multiplier.duration_hours;
         changes.push(`时长调整为 ${payload.multiplier.duration_hours} 小时`);
+      }
+      if (payload.multiplier.initial_multiplier !== undefined) {
+        task.multiplier.initial_multiplier = payload.multiplier.initial_multiplier;
+        changes.push(`初始倍率调整为 ${payload.multiplier.initial_multiplier}`);
       }
       if (payload.multiplier.current_multiplier !== undefined) {
         task.multiplier.current_multiplier = payload.multiplier.current_multiplier;
@@ -818,8 +943,17 @@
     if (action === "start-pause") {
       if (task.status === "running") {
         task.status = "paused";
+        task.paused_at = now;
         logAction(task, "暂停任务", `暂停任务「${task.name}」`);
       } else {
+        if (task.status === "paused" && task.paused_at) {
+          const pausedAt = new Date(task.paused_at);
+          if (!Number.isNaN(pausedAt.getTime())) {
+            const pausedSeconds = Math.max(Math.floor((new Date(now).getTime() - pausedAt.getTime()) / 1000), 0);
+            task.paused_seconds = Number(task.paused_seconds || 0) + pausedSeconds;
+          }
+        }
+        task.paused_at = null;
         task.status = "running";
         task.start_time = task.start_time || now;
         logAction(task, "开始任务", `开始/恢复任务「${task.name}」`);
@@ -848,6 +982,7 @@
         task.group_id = taskState.groups.find((g) => g.id === "g-completed") ? "g-completed" : task.group_id;
         logAction(task, "终止任务", `终止任务「${task.name}」并释放设备 ${task.device_id || "未绑定"}`, "device");
         task.device_id = null;
+        task.paused_at = null;
         await syncDeviceBinding(null, prevDevice);
       }
     }
@@ -888,6 +1023,7 @@
     document.querySelector("#task-score-target").value = 360000;
     document.querySelector("#task-multiplier-duration").value = 12;
     document.querySelector("#task-multiplier-current").value = taskDefaults.multiplier;
+    document.querySelector("#task-multiplier-initial").value = taskDefaults.initialMultiplier;
     document.querySelector("#task-chest-duration").value = 12;
     document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
     updateTypeSections("#task-modal", createTaskType);
@@ -913,23 +1049,38 @@
     });
   }
 
-  function createGroup() {
+  async function createGroup() {
     const name = document.querySelector("#group-name").value.trim();
     const desc = document.querySelector("#group-desc").value.trim();
     if (!name) {
       alert("请输入分组名称");
       return;
     }
-    const newGroup = {
-      id: `g-${Date.now()}`,
-      name,
-      description: desc,
-      owner: currentUser.username,
-      is_default: false,
-    };
-    taskState.groups.push(newGroup);
-    closeModal("#group-modal");
-    saveStateAndRender();
+    try {
+      const resp = await apiFetch("/api/task-groups", {
+        method: "POST",
+        body: JSON.stringify({ name, description: desc }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || `创建分组失败 ${resp.status}`);
+      }
+      const data = await resp.json();
+      const newGroup = {
+        id: String(data.id ?? `g-${Date.now()}`),
+        name: data.name || name,
+        description: data.description ?? desc,
+        owner: currentUser.username,
+        is_default: Boolean(data.is_default),
+      };
+      taskState.groups.push(newGroup);
+      closeModal("#group-modal");
+      saveTaskState(taskState);
+      await reloadGroupsFromServer();
+    } catch (err) {
+      console.warn("创建分组失败", err);
+      alert(err.message || "创建分组失败，请稍后重试");
+    }
   }
 
   async function createTask() {
@@ -956,6 +1107,8 @@
       owner: currentUser.username,
       start_time: new Date(start).toISOString(),
       updated_at: new Date().toISOString(),
+      paused_seconds: 0,
+      paused_at: null,
     };
     if (type === "score") {
       newTask.score = {
@@ -967,6 +1120,7 @@
     if (type === "multiplier") {
       newTask.multiplier = {
         duration_hours: Number(document.querySelector("#task-multiplier-duration").value || 0),
+        initial_multiplier: Number(document.querySelector("#task-multiplier-initial").value || 1.0),
         current_multiplier: Number(document.querySelector("#task-multiplier-current").value || 1.0),
       };
     }
@@ -1066,6 +1220,7 @@
       if (task.task_type === "multiplier") {
         payload.multiplier = {
           duration_hours: Number(document.querySelector("#edit-multiplier-hours").value || 0),
+          initial_multiplier: Number(document.querySelector("#edit-multiplier-initial").value || 1.0),
           current_multiplier: Number(document.querySelector("#edit-multiplier-current").value || 0),
         };
       }
@@ -1084,24 +1239,36 @@
       }
       closeModal("#move-modal");
     });
-    document.querySelector("#submit-group-manage")?.addEventListener("click", () => {
+    document.querySelector("#submit-group-manage")?.addEventListener("click", async () => {
       const group = getSelectedGroup();
       if (!group) return;
       group.name = document.querySelector("#manage-group-name").value.trim() || group.name;
       group.description = document.querySelector("#manage-group-desc").value.trim();
       group.accessors = [...new Set(manageAccessSelection)];
       group.updated_at = new Date().toISOString();
-      saveStateAndRender();
-      closeModal("#group-manage-modal");
+      try {
+        const resp = await apiFetch(`/api/task-groups/${group.id}/managers`, {
+          method: "POST",
+          body: JSON.stringify({ manager_ids: group.accessors }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.detail || `更新共享失败 ${resp.status}`);
+        }
+        await reloadGroupsFromServer();
+        renderAccessSummary();
+        closeModal("#group-manage-modal");
+      } catch (err) {
+        console.warn("更新分组共享失败", err);
+        alert(err.message || "更新共享失败，请稍后重试");
+      }
     });
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
       renderTasks();
     });
     document.querySelector("#group-refresh")?.addEventListener("click", () => {
-      taskState = loadTaskState();
-      renderGroups();
-      renderTasks();
+      reloadGroupsFromServer();
     });
     document.querySelector("#open-access-modal")?.addEventListener("click", async () => {
       await ensureUserOptionsLoaded();
@@ -1128,12 +1295,14 @@
     await fetchTaskDefaults();
     await ensureUserOptionsLoaded();
     await ensureDeviceOptions("");
+    await reloadGroupsFromServer();
     populateGroupSelects();
     renderOwnerFilter();
     renderStatusFilter();
     renderGroups();
     renderTypeFilter();
     renderTasks();
+    startRealtimeTicker();
     setCreateTypeButtons(createTaskType);
     updateTypeSections("#task-modal", createTaskType);
     bindEvents();

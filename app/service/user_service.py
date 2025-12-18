@@ -7,8 +7,17 @@ from sqlalchemy.orm import Session
 from app.core import security
 from app.models.enums import RoleEnum
 from app.models.user import User
-from app.repository import device_operation_log_repository, user_repository
+from app.models.enums import DeviceStatusEnum
+from app.repository import (
+    device_operation_log_repository,
+    device_repository,
+    group_authorization_repository,
+    task_group_repository,
+    task_repository,
+    user_repository,
+)
 from app.service import account_log_service
+from app.service import task_group_service
 
 
 class AuthResult(security.AuthenticatedUser):
@@ -31,6 +40,49 @@ def authenticate(db: Session, *, username: str, password: str) -> AuthResult:
         detail="用户登录系统",
     )
     return AuthResult(token=token, user=user)
+
+
+def _delete_user_resources(db: Session, target: User) -> None:
+    # 删除任务及其详情，并释放设备
+    tasks = task_repository.list_tasks(db, created_by=target.id, include_all=False)
+    for task in tasks:
+        if task.device_id:
+            device = device_repository.get_by_id(db, task.device_id)
+            if device:
+                device.status = DeviceStatusEnum.IDLE
+                db.add(device)
+        if getattr(task, "score_detail", None):
+            db.delete(task.score_detail)
+        if getattr(task, "multiplier_detail", None):
+            db.delete(task.multiplier_detail)
+        if getattr(task, "chest_detail", None):
+            db.delete(task.chest_detail)
+        db.delete(task)
+    db.commit()
+
+    # 删除分组授权记录（作为管理者或授权成员）
+    group_authorization_repository.delete_by_user(db, user_id=target.id)
+
+    # 删除该用户创建的分组，并将残留任务移动到各自创建人的默认分组
+    groups = task_group_repository.list_by_owner(db, owner_id=target.id)
+    for group in groups:
+        remaining_tasks = task_repository.list_tasks(db, group_ids=[group.id], include_all=False)
+        for remain in remaining_tasks:
+            default_group, _ = task_group_service.ensure_user_default_groups(db, owner=remain.created_by)
+            remain.group_id = default_group.id
+            db.add(remain)
+        group_authorization_repository.delete_by_group(db, group_id=group.id)
+        db.delete(group)
+    db.commit()
+
+    # 删除该用户创建的设备
+    devices = device_repository.list_devices(db, created_by=target.id)
+    for device in devices:
+        for task in list(device.tasks or []):
+            task.device_id = None
+            db.add(task)
+        db.delete(device)
+    db.commit()
 
 
 def logout(db: Session, *, user: User, token: str) -> None:
@@ -77,6 +129,7 @@ def create_user(
         role=role,
         is_active=is_active,
     )
+    task_group_service.ensure_user_default_groups(db, owner=created)
     account_log_service.log_action(
         db,
         performer=requester,
@@ -142,6 +195,7 @@ def delete_user(db: Session, *, requester: User, target_id: int):
         action="delete_user",
         detail=f"删除用户 {target.username}",
     )
+    _delete_user_resources(db, target)
     # Older schemas may still have a user FK on device_operation_logs; drop it so
     # historical logs do not block user deletions.
     device_operation_log_repository.drop_user_fk_constraints(db)

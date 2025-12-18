@@ -26,6 +26,7 @@ class TaskCreate(BaseModel):
     score_point_rate: int | None = None
     score_target: int | None = None
     multiplier_hours: int | None = None
+    multiplier_initial: float | None = None
     multiplier_current: float | None = None
     chest_hours: int | None = None
 
@@ -44,6 +45,7 @@ class TaskRead(BaseModel):
     target_points: Optional[int] = None
     current_points: Optional[int] = None
     duration_hours: Optional[int] = None
+    initial_multiplier: Optional[float] = None
     current_multiplier: Optional[float] = None
     updated_at: datetime
 
@@ -64,6 +66,7 @@ class TaskDetailUpdatePayload(BaseModel):
     score_target: int | None = None
     score_rate: int | None = None
     multiplier_hours: int | None = None
+    multiplier_initial: float | None = None
     multiplier_increment: float | None = None
     chest_hours: int | None = None
 
@@ -87,9 +90,11 @@ def _as_task_read(task) -> TaskRead:
     current_points = getattr(task.score_detail, "current_points", None)
 
     duration_hours = None
+    initial_multiplier = None
     current_multiplier = None
     if getattr(task, "multiplier_detail", None):
         duration_hours = task.multiplier_detail.duration_hours
+        initial_multiplier = task.multiplier_detail.initial_multiplier
         current_multiplier = task.multiplier_detail.current_multiplier
     if getattr(task, "chest_detail", None):
         duration_hours = task.chest_detail.duration_hours
@@ -108,6 +113,7 @@ def _as_task_read(task) -> TaskRead:
         target_points=target_points,
         current_points=current_points,
         duration_hours=duration_hours,
+        initial_multiplier=initial_multiplier,
         current_multiplier=current_multiplier,
         updated_at=task.updated_at,
     )
@@ -171,6 +177,7 @@ async def create_task(payload: TaskCreate, current=Depends(get_current_user), db
         else None,
         multiplier_detail={
             "duration_hours": payload.multiplier_hours,
+            "initial_multiplier": payload.multiplier_initial,
             "current_multiplier": payload.multiplier_current,
         }
         if payload.task_type == TaskTypeEnum.MULTIPLIER
@@ -230,6 +237,7 @@ async def update_task_detail(
         score_target=payload.score_target,
         score_rate=payload.score_rate,
         multiplier_hours=payload.multiplier_hours,
+        multiplier_initial=payload.multiplier_initial,
         multiplier_increment=payload.multiplier_increment,
         chest_hours=payload.chest_hours,
     )

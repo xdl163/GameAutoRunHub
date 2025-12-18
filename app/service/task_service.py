@@ -41,9 +41,7 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
     if group.name == "已完成":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已完成分组不可创建新任务")
-    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        return group
-    if group.created_by != requester.id:
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权在该分组下创建任务")
     return group
 
@@ -144,9 +142,14 @@ def create_task(
             target_points=score_detail.get("target_points") if score_detail else 360000,
         )
     if task_type is TaskTypeEnum.MULTIPLIER:
+        initial_multiplier_value = None
+        if multiplier_detail is not None:
+            initial_multiplier_value = multiplier_detail.get("initial_multiplier")
+        initial_multiplier_value = 1.0 if initial_multiplier_value is None else float(initial_multiplier_value)
         task.multiplier_detail = MultiplierTaskDetail(
             task_id=task.id,
             duration_hours=multiplier_detail.get("duration_hours") if multiplier_detail else 0,
+            initial_multiplier=initial_multiplier_value,
             current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else settings.default_multiplier,
         )
     if task_type is TaskTypeEnum.CHEST:
@@ -226,6 +229,10 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     _validate_transition(task, action)
     now = datetime.now(timezone.utc)
 
+    group = task_group_repository.get_by_id(db, task.group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
+
     if action in {"start", "resume"}:
         task.status = TaskStatusEnum.RUNNING
         task.start_time = task.start_time or now
@@ -239,6 +246,9 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     if action == "terminate":
         task.status = TaskStatusEnum.TERMINATED
         task.end_time = now
+        if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+            _, completed_group = task_group_service.ensure_user_default_groups(db, owner=group.created_by)
+            task.group_id = completed_group.id
         _update_device_binding(db, performer=requester, task=task, device_id=None, action="unbind_task")
 
     saved = task_repository.save(db, task)
@@ -300,6 +310,7 @@ def update_detail(
     score_target: int | None = None,
     score_rate: int | None = None,
     multiplier_hours: int | None = None,
+    multiplier_initial: float | None = None,
     multiplier_increment: float | None = None,
     chest_hours: int | None = None,
 ) -> Task:
@@ -321,6 +332,9 @@ def update_detail(
         if multiplier_hours is not None:
             task.multiplier_detail.duration_hours = int(multiplier_hours)
             changes.append(f"时长调整为 {multiplier_hours} 小时")
+        if multiplier_initial is not None:
+            task.multiplier_detail.initial_multiplier = float(multiplier_initial)
+            changes.append(f"初始倍率调整为 {multiplier_initial}")
         if multiplier_increment is not None:
             task.multiplier_detail.current_multiplier = float(multiplier_increment)
             changes.append(f"当前倍率调整为 {multiplier_increment}")
@@ -353,6 +367,15 @@ def move_group(db: Session, *, requester: User, task_id: int, target_group_id: i
     group = task_group_repository.get_by_id(db, target_group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标分组不存在")
+    source_group = task_group_repository.get_by_id(db, task.group_id)
+    if not source_group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
+
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        if source_group.created_by != requester.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权移动该分组下的任务")
+        if group.created_by != requester.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权将任务移动到目标分组")
 
     task.group_id = target_group_id
     saved = task_repository.save(db, task)

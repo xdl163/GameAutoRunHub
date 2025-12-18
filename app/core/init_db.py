@@ -7,6 +7,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
 from app.models.enums import RoleEnum
 from app.models.user import User
+from app.service.task_group_service import ensure_user_default_groups
 
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_PASSWORD = "xu12345678gh"
@@ -24,6 +25,7 @@ def init_database() -> None:
         ).first()
 
         if existing_admin:
+            ensure_user_default_groups(session, owner=existing_admin)
             return
 
         admin_user = User(
@@ -35,3 +37,4 @@ def init_database() -> None:
         )
         session.add(admin_user)
         session.commit()
+        ensure_user_default_groups(session, owner=admin_user)
