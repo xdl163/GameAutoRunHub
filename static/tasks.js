@@ -56,7 +56,6 @@
     renderGroupFilter();
     renderOwnerFilter();
     renderTasks();
-    renderLogs();
   }
 
   function computeScoreMeta(task) {
@@ -449,29 +448,6 @@
     saveStateAndRender();
   }
 
-  function renderLogs() {
-    const container = document.querySelector("#task-log-list");
-    const logs = [...taskState.logs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12);
-    container.innerHTML = "";
-    if (!logs.length) {
-      container.innerHTML = `<p class="muted mini">暂无日志</p>`;
-      return;
-    }
-    logs.forEach((log) => {
-      const row = document.createElement("div");
-      row.className = "log-row";
-      row.innerHTML = `
-        <div>
-          <strong>${log.action}</strong>
-          <p class="muted mini">${fmtDate(log.created_at)} · 任务ID：${log.task_id || "-"} · 执行人：${log.performer}</p>
-          <p class="muted">${log.detail || "-"}</p>
-        </div>
-        <span class="pill ${log.scope === "device" ? "warning" : "muted"}">${log.scope === "device" ? "设备池" : "任务"}</span>
-      `;
-      container.appendChild(row);
-    });
-  }
-
   function openModal(id) {
     document.querySelector(id)?.classList.add("active");
   }
@@ -611,10 +587,6 @@
       renderGroups();
       renderTasks();
     });
-    document.querySelector("#log-refresh")?.addEventListener("click", () => {
-      taskState = loadTaskState();
-      renderLogs();
-    });
     bindModalClose();
   }
 
@@ -628,7 +600,6 @@
     renderGroups();
     renderGroupFilter();
     renderTasks();
-    renderLogs();
     updateTaskTypeSections();
     bindEvents();
   });
