@@ -41,9 +41,7 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
     if group.name == "已完成":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已完成分组不可创建新任务")
-    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        return group
-    if group.created_by != requester.id:
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权在该分组下创建任务")
     return group
 
@@ -231,6 +229,10 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     _validate_transition(task, action)
     now = datetime.now(timezone.utc)
 
+    group = task_group_repository.get_by_id(db, task.group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
+
     if action in {"start", "resume"}:
         task.status = TaskStatusEnum.RUNNING
         task.start_time = task.start_time or now
@@ -244,6 +246,9 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     if action == "terminate":
         task.status = TaskStatusEnum.TERMINATED
         task.end_time = now
+        if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+            _, completed_group = task_group_service.ensure_user_default_groups(db, owner=group.created_by)
+            task.group_id = completed_group.id
         _update_device_binding(db, performer=requester, task=task, device_id=None, action="unbind_task")
 
     saved = task_repository.save(db, task)
@@ -362,6 +367,15 @@ def move_group(db: Session, *, requester: User, task_id: int, target_group_id: i
     group = task_group_repository.get_by_id(db, target_group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标分组不存在")
+    source_group = task_group_repository.get_by_id(db, task.group_id)
+    if not source_group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
+
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        if source_group.created_by != requester.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权移动该分组下的任务")
+        if group.created_by != requester.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权将任务移动到目标分组")
 
     task.group_id = target_group_id
     saved = task_repository.save(db, task)
