@@ -140,6 +140,44 @@
     return Math.round(value).toLocaleString();
   }
 
+  function normalizeApiTask(apiTask) {
+    if (!apiTask) return null;
+    const base = {
+      id: apiTask.id,
+      name: apiTask.name,
+      task_type: apiTask.task_type,
+      status: apiTask.status,
+      group_id: String(apiTask.group_id),
+      device_id: apiTask.device_id,
+      owner: currentUser?.username || apiTask.created_by,
+      start_time: apiTask.start_time,
+      end_time: apiTask.end_time,
+      updated_at: apiTask.updated_at,
+      paused_seconds: 0,
+      paused_at: null,
+    };
+    if (apiTask.task_type === "score") {
+      base.score = {
+        point_rate: apiTask.point_rate,
+        target_points: apiTask.target_points,
+        current_points: apiTask.current_points,
+      };
+    }
+    if (apiTask.task_type === "multiplier") {
+      base.multiplier = {
+        duration_hours: apiTask.duration_hours,
+        initial_multiplier: apiTask.initial_multiplier,
+        current_multiplier: apiTask.current_multiplier,
+      };
+    }
+    if (apiTask.task_type === "chest") {
+      base.chest = {
+        duration_hours: apiTask.duration_hours,
+      };
+    }
+    return base;
+  }
+
   function isOwnedGroup(group) {
     if (!group) return false;
     return (group.owner_username || group.owner) === currentUser?.username;
@@ -646,7 +684,7 @@
       alert("设备当前不可用，请选择空闲设备");
       return { error: true };
     }
-    return { value: match.device_id, record: match };
+    return { value: match.device_id, record: match, device_pk: match.id };
   }
 
   async function resolveDeviceRecord(deviceId) {
@@ -1099,43 +1137,45 @@
     }
     const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);
     if (!name) return alert("请输入任务名称");
-    const newTask = {
-      id: Date.now(),
+    const payload = {
       name,
       task_type: type,
-      status: "running",
-      group_id: groupId,
-      device_id: validatedDevice.value,
-      owner: currentUser.username,
+      group_id: Number(groupId),
+      device_id: validatedDevice.device_pk,
       start_time: new Date(start).toISOString(),
-      updated_at: new Date().toISOString(),
-      paused_seconds: 0,
-      paused_at: null,
     };
     if (type === "score") {
-      newTask.score = {
-        target_points: Number(document.querySelector("#task-score-target").value || 360000),
-        current_points: Number(document.querySelector("#task-score-current").value || 0),
-        point_rate: Number(document.querySelector("#task-score-rate").value || 7000),
-      };
+      payload.score_point_rate = Number(document.querySelector("#task-score-rate").value || 7000);
+      payload.score_target = Number(document.querySelector("#task-score-target").value || 360000);
     }
     if (type === "multiplier") {
-      newTask.multiplier = {
-        duration_hours: Number(document.querySelector("#task-multiplier-duration").value || 0),
-        initial_multiplier: Number(document.querySelector("#task-multiplier-initial").value || 1.0),
-        current_multiplier: Number(document.querySelector("#task-multiplier-current").value || 1.0),
-      };
+      payload.multiplier_hours = Number(document.querySelector("#task-multiplier-duration").value || 0);
+      payload.multiplier_initial = Number(document.querySelector("#task-multiplier-initial").value || 1.0);
+      payload.multiplier_current = Number(document.querySelector("#task-multiplier-current").value || 1.0);
     }
     if (type === "chest") {
-      newTask.chest = {
-        duration_hours: Number(document.querySelector("#task-chest-duration").value || 0),
-      };
+      payload.chest_hours = Number(document.querySelector("#task-chest-duration").value || 0);
     }
-    await syncDeviceBinding(validatedDevice.record, null);
-    taskState.tasks.push(newTask);
-    logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
-    closeModal("#task-modal");
-    saveStateAndRender();
+
+    try {
+      const resp = await apiFetch("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || `创建任务失败 ${resp.status}`);
+      }
+      const created = await resp.json();
+      const newTask = normalizeApiTask(created);
+      taskState.tasks.push(newTask);
+      logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
+      closeModal("#task-modal");
+      saveStateAndRender();
+    } catch (err) {
+      console.warn("创建任务失败", err);
+      alert(err.message || "创建任务失败，请稍后重试");
+    }
   }
 
   function isCompletedGroup(group) {

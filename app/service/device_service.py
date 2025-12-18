@@ -54,15 +54,24 @@ def list_devices(
     status: DeviceStatusEnum | None = None,
     idle_only: bool = False,
     creator_username: str | None = None,
+    owner_only: bool = False,
 ):
+    created_by = None
+    username_filter = None
+
+    if owner_only or requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        created_by = requester.id
+    else:
+        username_filter = creator_username
+
     return device_repository.list_devices(
         db,
         device_id=device_id,
         task_id=task_id,
         status=status,
         idle_only=idle_only,
-        created_by=requester.id,
-        creator_username=None,
+        created_by=created_by,
+        creator_username=username_filter,
     )
 
 
