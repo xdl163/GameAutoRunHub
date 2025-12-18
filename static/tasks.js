@@ -477,6 +477,34 @@
     });
   }
 
+  function getKnownDevices() {
+    const seen = new Map();
+    deviceOptionsCache.forEach((list) => {
+      (list || []).forEach((item) => {
+        if (item?.device_id === undefined || item?.device_id === null) return;
+        const key = String(item.device_id).toLowerCase();
+        if (!seen.has(key)) {
+          seen.set(key, item);
+        }
+      });
+    });
+    return Array.from(seen.values());
+  }
+
+  async function validateDeviceInput(rawValue) {
+    const trimmed = (rawValue || "").trim();
+    if (!trimmed) return { value: null };
+    await ensureDeviceOptions(trimmed);
+    const match = getKnownDevices().find(
+      (item) => String(item.device_id).toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (!match) {
+      alert("设备不存在，请从下拉建议中选择已有设备");
+      return { error: true };
+    }
+    return { value: match.device_id };
+  }
+
   function logAction(task, action, detail, scope = "task") {
     const entry = {
       id: Date.now(),
@@ -843,11 +871,13 @@
     saveStateAndRender();
   }
 
-  function createTask() {
+  async function createTask() {
     const name = document.querySelector("#task-name").value.trim();
     const type = createTaskType;
     const groupId = document.querySelector("#task-group").value;
-    const device = document.querySelector("#task-device").value.trim();
+    const deviceInput = document.querySelector("#task-device").value;
+    const validatedDevice = await validateDeviceInput(deviceInput);
+    if (validatedDevice.error) return;
     const start = document.querySelector("#task-start").value;
     if (!name) return alert("请输入任务名称");
     const newTask = {
@@ -856,7 +886,7 @@
       task_type: type,
       status: "pending",
       group_id: groupId,
-      device_id: device || null,
+      device_id: validatedDevice.value,
       owner: currentUser.username,
       start_time: start || new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -913,11 +943,13 @@
       applyPatch(task, addPoints, addHours);
       closeModal("#patch-modal");
     });
-    document.querySelector("#submit-edit")?.addEventListener("click", () => {
+    document.querySelector("#submit-edit")?.addEventListener("click", async () => {
       const task = getSelectedTask();
       if (!task) return;
+      const validatedDevice = await validateDeviceInput(document.querySelector("#edit-device").value);
+      if (validatedDevice.error) return;
       const payload = {
-        device: document.querySelector("#edit-device").value.trim(),
+        device: validatedDevice.value,
         score: null,
         multiplier: null,
         chest: null,
