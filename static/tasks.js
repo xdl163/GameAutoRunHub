@@ -54,6 +54,7 @@
     initialMultiplier: 1.0,
   };
   const COMPLETED_GROUP_KEYWORDS = ["g-completed", "已完成"];
+  let groupLoadPromise = null;
 
   async function loadUserOptions() {
     try {
@@ -291,6 +292,34 @@
       }
       list.appendChild(button);
     });
+  }
+
+  async function reloadGroupsFromServer() {
+    if (groupLoadPromise) return groupLoadPromise;
+    groupLoadPromise = (async () => {
+      try {
+        const resp = await apiFetch("/api/task-groups");
+        if (!resp.ok) throw new Error(`加载分组失败 ${resp.status}`);
+        const data = await resp.json();
+        const mapped = (data || []).map((g) => ({
+          id: String(g.id),
+          name: g.name,
+          description: g.description || "",
+          is_default: Boolean(g.is_default),
+          owner: currentUser?.username || g.owner || "",
+        }));
+        taskState.groups = mapped;
+        saveTaskState(taskState);
+        renderGroups();
+        renderTasks();
+      } catch (err) {
+        console.warn("从服务端加载分组失败，使用本地数据", err);
+        renderGroups();
+      } finally {
+        groupLoadPromise = null;
+      }
+    })();
+    return groupLoadPromise;
   }
 
   function renderTypeFilter() {
@@ -1036,7 +1065,8 @@
       };
       taskState.groups.push(newGroup);
       closeModal("#group-modal");
-      saveStateAndRender();
+      saveTaskState(taskState);
+      await reloadGroupsFromServer();
     } catch (err) {
       console.warn("创建分组失败", err);
       alert(err.message || "创建分组失败，请稍后重试");
@@ -1214,9 +1244,7 @@
       renderTasks();
     });
     document.querySelector("#group-refresh")?.addEventListener("click", () => {
-      taskState = loadTaskState();
-      renderGroups();
-      renderTasks();
+      reloadGroupsFromServer();
     });
     document.querySelector("#open-access-modal")?.addEventListener("click", async () => {
       await ensureUserOptionsLoaded();
@@ -1243,6 +1271,7 @@
     await fetchTaskDefaults();
     await ensureUserOptionsLoaded();
     await ensureDeviceOptions("");
+    await reloadGroupsFromServer();
     populateGroupSelects();
     renderOwnerFilter();
     renderStatusFilter();
