@@ -82,9 +82,6 @@ def _update_device_binding(
             )
         return task
 
-    if prev_device and prev_device.id == device_id:
-        return task
-
     new_device = device_repository.get_by_id(db, device_id)
     if not new_device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
@@ -92,6 +89,18 @@ def _update_device_binding(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权绑定该设备")
     if new_device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
+    if prev_device and prev_device.id == device_id:
+        if prev_device.status != DeviceStatusEnum.RUNNING:
+            prev_device.status = DeviceStatusEnum.RUNNING
+            device_repository.save(db, prev_device)
+            device_operation_log_service.log_action(
+                db,
+                performer=performer,
+                device=prev_device,
+                action=action,
+                detail=f"任务 {task.id} 更新设备状态为运行",
+            )
+        return task
     new_device.status = DeviceStatusEnum.RUNNING
     device_repository.save(db, new_device)
 
