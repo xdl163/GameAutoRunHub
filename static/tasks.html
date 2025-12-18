@@ -131,18 +131,18 @@
             <input type="datetime-local" id="task-start" />
           </label>
           <div class="type-section" data-type="score">
-            <div class="three-columns">
-              <label class="field">
-                <span>目标积分</span>
-                <div class="input-with-actions">
-                  <input type="number" id="task-score-target" value="360000" />
-                  <div class="quick-actions">
-                    <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="100000">+10w</button>
-                    <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="50000">+5w</button>
-                    <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="10000">+1w</button>
-                  </div>
+            <label class="field">
+              <span>目标积分</span>
+              <div class="input-with-actions inline-actions">
+                <input type="number" id="task-score-target" value="360000" />
+                <div class="quick-actions">
+                  <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="100000">+10w</button>
+                  <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="50000">+5w</button>
+                  <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="10000">+1w</button>
                 </div>
-              </label>
+              </div>
+            </label>
+            <div class="two-columns">
               <label class="field">
                 <span>当前积分</span>
                 <input type="number" id="task-score-current" value="0" />
@@ -230,7 +230,7 @@
             <div class="two-columns">
               <label class="field">
                 <span>目标积分</span>
-                <div class="input-with-actions">
+                <div class="input-with-actions inline-actions">
                   <input type="number" id="edit-score-target" />
                   <div class="quick-actions">
                     <button type="button" class="quick-btn" data-target-input="edit-score-target" data-increment="100000">+10w</button>

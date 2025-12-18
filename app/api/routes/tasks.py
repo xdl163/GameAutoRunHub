@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user, get_db
+from app.core import config
 from app.models.enums import TaskStatusEnum, TaskTypeEnum
 from app.models.user import User
 from app.service import task_service
@@ -75,6 +76,11 @@ class BindDevicePayload(BaseModel):
     device_id: int | None
 
 
+class TaskDefaults(BaseModel):
+    default_score_rate: int
+    default_multiplier: float
+
+
 def _as_task_read(task) -> TaskRead:
     point_rate = getattr(task.score_detail, "point_rate", None)
     target_points = getattr(task.score_detail, "target_points", None)
@@ -129,6 +135,18 @@ async def list_tasks(
         status=status,
     )
     return [_as_task_read(t) for t in tasks]
+
+
+@router.get(
+    "/tasks/defaults",
+    response_model=TaskDefaults,
+    summary="获取任务默认配置",
+    dependencies=[Depends(get_current_user)],
+)
+async def get_task_defaults(current=Depends(get_current_user)):
+    _ = current
+    settings = config.get_settings()
+    return TaskDefaults(default_score_rate=settings.default_score_rate, default_multiplier=settings.default_multiplier)
 
 
 @router.post(

@@ -18,6 +18,7 @@ from app.models import (
     TaskTypeEnum,
     User,
 )
+from app.core import config
 from app.repository import device_repository, task_group_repository, task_repository
 from app.service import device_operation_log_service, task_group_service, task_log_service
 
@@ -120,6 +121,8 @@ def create_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
     if device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
+    settings = config.get_settings()
+    start_at = start_time or datetime.now(timezone.utc)
     task = task_repository.create_task(
         db,
         name=name,
@@ -127,20 +130,21 @@ def create_task(
         group_id=group.id,
         created_by=requester.id,
         device_id=device_id,
-        start_time=start_time,
+        start_time=start_at,
+        status=TaskStatusEnum.RUNNING,
     )
 
     if task_type is TaskTypeEnum.SCORE:
         task.score_detail = ScoreTaskDetail(
             task_id=task.id,
-            point_rate=score_detail.get("point_rate") if score_detail else 7000,
+            point_rate=score_detail.get("point_rate") if score_detail else settings.default_score_rate,
             target_points=score_detail.get("target_points") if score_detail else 360000,
         )
     if task_type is TaskTypeEnum.MULTIPLIER:
         task.multiplier_detail = MultiplierTaskDetail(
             task_id=task.id,
             duration_hours=multiplier_detail.get("duration_hours") if multiplier_detail else 0,
-            current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else 1.0,
+            current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else settings.default_multiplier,
         )
     if task_type is TaskTypeEnum.CHEST:
         task.chest_detail = ChestTaskDetail(

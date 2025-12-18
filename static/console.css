@@ -550,6 +550,14 @@ button.ghost.mini.danger {
   flex-direction: column;
   gap: 6px;
 }
+.input-with-actions.inline-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.input-with-actions.inline-actions .quick-actions {
+  flex-wrap: nowrap;
+}
 .quick-actions {
   display: flex;
   flex-wrap: wrap;

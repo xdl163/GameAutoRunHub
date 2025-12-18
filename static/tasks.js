@@ -47,6 +47,10 @@
   ];
 
   let createTaskType = "score";
+  const taskDefaults = {
+    scoreRate: 7000,
+    multiplier: 1.0,
+  };
   const COMPLETED_GROUP_KEYWORDS = ["g-completed", "已完成"];
 
   async function loadUserOptions() {
@@ -876,10 +880,10 @@
     document.querySelector("#task-name").value = "";
     document.querySelector("#task-device").value = "";
     document.querySelector("#task-score-current").value = 0;
-    document.querySelector("#task-score-rate").value = 7000;
+    document.querySelector("#task-score-rate").value = taskDefaults.scoreRate;
     document.querySelector("#task-score-target").value = 360000;
     document.querySelector("#task-multiplier-duration").value = 12;
-    document.querySelector("#task-multiplier-current").value = 1.0;
+    document.querySelector("#task-multiplier-current").value = taskDefaults.multiplier;
     document.querySelector("#task-chest-duration").value = 12;
     document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
     updateTypeSections("#task-modal", createTaskType);
@@ -936,17 +940,17 @@
       alert("已完成分组不可选择，请选择其他分组");
       return;
     }
-    const start = document.querySelector("#task-start").value;
+    const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);
     if (!name) return alert("请输入任务名称");
     const newTask = {
       id: Date.now(),
       name,
       task_type: type,
-      status: "pending",
+      status: "running",
       group_id: groupId,
       device_id: validatedDevice.value,
       owner: currentUser.username,
-      start_time: start || new Date().toISOString(),
+      start_time: new Date(start).toISOString(),
       updated_at: new Date().toISOString(),
     };
     if (type === "score") {
@@ -989,6 +993,22 @@
         target.value = current + increment;
       });
     });
+  }
+
+  async function fetchTaskDefaults() {
+    try {
+      const resp = await apiFetch("/api/tasks/defaults");
+      if (!resp.ok) throw new Error(`failed ${resp.status}`);
+      const data = await resp.json();
+      if (Number.isFinite(data.default_score_rate)) {
+        taskDefaults.scoreRate = Number(data.default_score_rate);
+      }
+      if (Number.isFinite(data.default_multiplier)) {
+        taskDefaults.multiplier = Number(data.default_multiplier);
+      }
+    } catch (err) {
+      console.warn("获取任务默认配置失败，使用本地默认值", err);
+    }
   }
 
   function bindEvents() {
@@ -1099,6 +1119,7 @@
     currentUser = initConsoleShell("tasks");
     if (!currentUser) return;
 
+    await fetchTaskDefaults();
     await ensureUserOptionsLoaded();
     await ensureDeviceOptions("");
     populateGroupSelects();
