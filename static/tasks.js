@@ -47,6 +47,11 @@
   ];
 
   let createTaskType = "score";
+  const taskDefaults = {
+    scoreRate: 7000,
+    multiplier: 1.0,
+  };
+  const COMPLETED_GROUP_KEYWORDS = ["g-completed", "已完成"];
 
   async function loadUserOptions() {
     try {
@@ -75,10 +80,10 @@
   }
 
   async function loadDeviceOptions(keyword = "") {
-    const key = keyword.trim().toLowerCase();
+    const key = `${keyword.trim().toLowerCase()}|idle`;
     let list = [];
     try {
-      const query = key ? `?q=${encodeURIComponent(key)}` : "";
+      const query = keyword ? `?q=${encodeURIComponent(keyword)}&idle_only=true` : "?idle_only=true";
       const resp = await apiFetch(`/api/devices/options${query}`);
       if (!resp.ok) throw new Error(`加载设备失败 ${resp.status}`);
       list = await resp.json();
@@ -491,15 +496,25 @@
     return Array.from(seen.values());
   }
 
-  async function validateDeviceInput(rawValue) {
+  async function validateDeviceInput(rawValue, { allowEmpty = true, currentDeviceId = null } = {}) {
     const trimmed = (rawValue || "").trim();
-    if (!trimmed) return { value: null, record: null };
+    if (!trimmed) {
+      if (!allowEmpty) {
+        alert("请先输入设备ID");
+        return { error: true };
+      }
+      return { value: null, record: null };
+    }
     await ensureDeviceOptions(trimmed);
     const match = getKnownDevices().find(
       (item) => String(item.device_id).toLowerCase() === trimmed.toLowerCase(),
     );
     if (!match) {
       alert("设备不存在，请从下拉建议中选择已有设备");
+      return { error: true };
+    }
+    if (match.status && match.status !== "idle" && String(currentDeviceId || "").toLowerCase() !== trimmed.toLowerCase()) {
+      alert("设备当前不可用，请选择空闲设备");
       return { error: true };
     }
     return { value: match.device_id, record: match };
@@ -869,10 +884,10 @@
     document.querySelector("#task-name").value = "";
     document.querySelector("#task-device").value = "";
     document.querySelector("#task-score-current").value = 0;
-    document.querySelector("#task-score-rate").value = 7000;
+    document.querySelector("#task-score-rate").value = taskDefaults.scoreRate;
     document.querySelector("#task-score-target").value = 360000;
     document.querySelector("#task-multiplier-duration").value = 12;
-    document.querySelector("#task-multiplier-current").value = 1.0;
+    document.querySelector("#task-multiplier-current").value = taskDefaults.multiplier;
     document.querySelector("#task-chest-duration").value = 12;
     document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
     updateTypeSections("#task-modal", createTaskType);
@@ -888,9 +903,8 @@
   function populateGroupSelects() {
     const select = document.querySelector("#task-group");
     if (!select) return;
-    select.innerHTML = taskState.groups
-      .map((g) => `<option value="${g.id}">${g.name}</option>`)
-      .join("");
+    const options = taskState.groups.filter((g) => !isCompletedGroup(g));
+    select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
   }
 
   function setCreateTypeButtons(type) {
@@ -923,19 +937,24 @@
     const type = createTaskType;
     const groupId = document.querySelector("#task-group").value;
     const deviceInput = document.querySelector("#task-device").value;
-    const validatedDevice = await validateDeviceInput(deviceInput);
+    const validatedDevice = await validateDeviceInput(deviceInput, { allowEmpty: false });
     if (validatedDevice.error) return;
-    const start = document.querySelector("#task-start").value;
+    const targetGroup = taskState.groups.find((g) => g.id === groupId);
+    if (isCompletedGroup(targetGroup)) {
+      alert("已完成分组不可选择，请选择其他分组");
+      return;
+    }
+    const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);
     if (!name) return alert("请输入任务名称");
     const newTask = {
       id: Date.now(),
       name,
       task_type: type,
-      status: "pending",
+      status: "running",
       group_id: groupId,
       device_id: validatedDevice.value,
       owner: currentUser.username,
-      start_time: start || new Date().toISOString(),
+      start_time: new Date(start).toISOString(),
       updated_at: new Date().toISOString(),
     };
     if (type === "score") {
@@ -961,6 +980,39 @@
     logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
     closeModal("#task-modal");
     saveStateAndRender();
+  }
+
+  function isCompletedGroup(group) {
+    if (!group) return false;
+    return COMPLETED_GROUP_KEYWORDS.includes(group.id) || COMPLETED_GROUP_KEYWORDS.includes(group.name);
+  }
+
+  function bindQuickAddButtons() {
+    document.querySelectorAll("[data-target-input][data-increment]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = document.querySelector(`#${btn.dataset.targetInput}`);
+        if (!target) return;
+        const increment = Number(btn.dataset.increment || 0);
+        const current = Number(target.value || 0);
+        target.value = current + increment;
+      });
+    });
+  }
+
+  async function fetchTaskDefaults() {
+    try {
+      const resp = await apiFetch("/api/tasks/defaults");
+      if (!resp.ok) throw new Error(`failed ${resp.status}`);
+      const data = await resp.json();
+      if (Number.isFinite(data.default_score_rate)) {
+        taskDefaults.scoreRate = Number(data.default_score_rate);
+      }
+      if (Number.isFinite(data.default_multiplier)) {
+        taskDefaults.multiplier = Number(data.default_multiplier);
+      }
+    } catch (err) {
+      console.warn("获取任务默认配置失败，使用本地默认值", err);
+    }
   }
 
   function bindEvents() {
@@ -994,7 +1046,9 @@
     document.querySelector("#submit-edit")?.addEventListener("click", async () => {
       const task = getSelectedTask();
       if (!task) return;
-      const validatedDevice = await validateDeviceInput(document.querySelector("#edit-device").value);
+      const validatedDevice = await validateDeviceInput(document.querySelector("#edit-device").value, {
+        currentDeviceId: task.device_id,
+      });
       if (validatedDevice.error) return;
       const payload = {
         device: validatedDevice.value,
@@ -1064,12 +1118,14 @@
     bindModalClose();
     bindDeviceSuggest("#task-device", "#task-device-suggest");
     bindDeviceSuggest("#edit-device", "#edit-device-suggest");
+    bindQuickAddButtons();
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
     currentUser = initConsoleShell("tasks");
     if (!currentUser) return;
 
+    await fetchTaskDefaults();
     await ensureUserOptionsLoaded();
     await ensureDeviceOptions("");
     populateGroupSelects();

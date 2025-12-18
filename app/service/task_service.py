@@ -18,6 +18,7 @@ from app.models import (
     TaskTypeEnum,
     User,
 )
+from app.core import config
 from app.repository import device_repository, task_group_repository, task_repository
 from app.service import device_operation_log_service, task_group_service, task_log_service
 
@@ -38,6 +39,8 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
     group = task_group_repository.get_by_id(db, group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
+    if group.name == "已完成":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已完成分组不可创建新任务")
     if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
         return group
     if group.created_by != requester.id:
@@ -68,10 +71,13 @@ def _update_device_binding(
             )
         return task
 
+    if prev_device and prev_device.id == device_id:
+        return task
+
     new_device = device_repository.get_by_id(db, device_id)
     if not new_device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
-    if (not prev_device or new_device.id != prev_device.id) and new_device.status != DeviceStatusEnum.IDLE:
+    if new_device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     new_device.status = DeviceStatusEnum.RUNNING
     device_repository.save(db, new_device)
@@ -111,6 +117,15 @@ def create_task(
     chest_detail: dict | None = None,
 ) -> Task:
     group = _ensure_group_access(db, requester=requester, group_id=group_id)
+    if device_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="创建任务时必须绑定设备")
+    device = device_repository.get_by_id(db, device_id)
+    if not device:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+    if device.status != DeviceStatusEnum.IDLE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
+    settings = config.get_settings()
+    start_at = start_time or datetime.now(timezone.utc)
     task = task_repository.create_task(
         db,
         name=name,
@@ -118,20 +133,21 @@ def create_task(
         group_id=group.id,
         created_by=requester.id,
         device_id=device_id,
-        start_time=start_time,
+        start_time=start_at,
+        status=TaskStatusEnum.RUNNING,
     )
 
     if task_type is TaskTypeEnum.SCORE:
         task.score_detail = ScoreTaskDetail(
             task_id=task.id,
-            point_rate=score_detail.get("point_rate") if score_detail else 7000,
+            point_rate=score_detail.get("point_rate") if score_detail else settings.default_score_rate,
             target_points=score_detail.get("target_points") if score_detail else 360000,
         )
     if task_type is TaskTypeEnum.MULTIPLIER:
         task.multiplier_detail = MultiplierTaskDetail(
             task_id=task.id,
             duration_hours=multiplier_detail.get("duration_hours") if multiplier_detail else 0,
-            current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else 1.0,
+            current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else settings.default_multiplier,
         )
     if task_type is TaskTypeEnum.CHEST:
         task.chest_detail = ChestTaskDetail(
@@ -139,8 +155,7 @@ def create_task(
             duration_hours=chest_detail.get("duration_hours") if chest_detail else 0,
         )
 
-    if device_id:
-        _update_device_binding(db, performer=requester, task=task, device_id=device_id, action="bind_task")
+    _update_device_binding(db, performer=requester, task=task, device_id=device_id, action="bind_task")
 
     saved = task_repository.save(db, task)
     task_log_service.log_action(

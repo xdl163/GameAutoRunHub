@@ -49,6 +49,7 @@ def create_task(
     created_by: int,
     device_id: int | None = None,
     start_time=None,
+    status: TaskStatusEnum = TaskStatusEnum.PENDING,
 ) -> Task:
     task = Task(
         name=name,
@@ -57,6 +58,7 @@ def create_task(
         created_by=created_by,
         device_id=device_id,
         start_time=start_time,
+        status=status,
     )
     db.add(task)
     db.commit()

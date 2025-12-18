@@ -117,40 +117,53 @@
               <button type="button" class="pill" data-type="chest">宝箱</button>
             </div>
           </div>
-          <label class="field">
+          <label class="field inline-field">
             <span>所属分组</span>
             <select id="task-group"></select>
           </label>
           <label class="field">
             <span>绑定设备</span>
-            <input type="text" id="task-device" placeholder="设备ID，可空表示待绑定" autocomplete="off" />
+            <input type="text" id="task-device" placeholder="设备ID（必填）" autocomplete="off" />
             <div id="task-device-suggest" class="suggestion-list"></div>
           </label>
-          <label class="field">
+          <label class="field inline-field">
             <span>开始时间</span>
             <input type="datetime-local" id="task-start" />
           </label>
           <div class="type-section" data-type="score">
+            <label class="field">
+              <span>目标积分</span>
+              <div class="input-with-actions inline-actions">
+                <input type="number" id="task-score-target" value="360000" />
+                <div class="quick-actions">
+                  <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="100000">+10w</button>
+                  <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="50000">+5w</button>
+                  <button type="button" class="quick-btn" data-target-input="task-score-target" data-increment="10000">+1w</button>
+                </div>
+              </div>
+            </label>
             <div class="two-columns">
+              <label class="field">
+                <span>当前积分</span>
+                <input type="number" id="task-score-current" value="0" />
+              </label>
               <label class="field">
                 <span>积分速率（每小时）</span>
                 <input type="number" id="task-score-rate" value="7000" />
               </label>
-              <label class="field">
-                <span>目标积分</span>
-                <input type="number" id="task-score-target" value="360000" />
-              </label>
             </div>
-            <label class="field">
-              <span>当前积分</span>
-              <input type="number" id="task-score-current" value="0" />
-            </label>
           </div>
           <div class="type-section" data-type="multiplier">
             <div class="two-columns">
               <label class="field">
                 <span>时长（小时）</span>
-                <input type="number" id="task-multiplier-duration" value="12" />
+                <div class="input-with-actions">
+                  <input type="number" id="task-multiplier-duration" value="12" />
+                  <div class="quick-actions">
+                    <button type="button" class="quick-btn" data-target-input="task-multiplier-duration" data-increment="12">+12h</button>
+                    <button type="button" class="quick-btn" data-target-input="task-multiplier-duration" data-increment="24">+24h</button>
+                  </div>
+                </div>
               </label>
               <label class="field">
                 <span>当前倍率</span>
@@ -161,7 +174,13 @@
           <div class="type-section" data-type="chest">
             <label class="field">
               <span>时长（小时）</span>
-              <input type="number" id="task-chest-duration" value="12" />
+              <div class="input-with-actions">
+                <input type="number" id="task-chest-duration" value="12" />
+                <div class="quick-actions">
+                  <button type="button" class="quick-btn" data-target-input="task-chest-duration" data-increment="12">+12h</button>
+                  <button type="button" class="quick-btn" data-target-input="task-chest-duration" data-increment="24">+24h</button>
+                </div>
+              </div>
             </label>
           </div>
           <div class="actions" style="justify-content: flex-end">
@@ -211,7 +230,14 @@
             <div class="two-columns">
               <label class="field">
                 <span>目标积分</span>
-                <input type="number" id="edit-score-target" />
+                <div class="input-with-actions inline-actions">
+                  <input type="number" id="edit-score-target" />
+                  <div class="quick-actions">
+                    <button type="button" class="quick-btn" data-target-input="edit-score-target" data-increment="100000">+10w</button>
+                    <button type="button" class="quick-btn" data-target-input="edit-score-target" data-increment="50000">+5w</button>
+                    <button type="button" class="quick-btn" data-target-input="edit-score-target" data-increment="10000">+1w</button>
+                  </div>
+                </div>
               </label>
               <label class="field">
                 <span>积分速率</span>
@@ -222,7 +248,13 @@
           <div class="type-section" data-type="multiplier">
             <label class="field">
               <span>时长（小时）</span>
-              <input type="number" id="edit-multiplier-hours" />
+              <div class="input-with-actions">
+                <input type="number" id="edit-multiplier-hours" />
+                <div class="quick-actions">
+                  <button type="button" class="quick-btn" data-target-input="edit-multiplier-hours" data-increment="12">+12h</button>
+                  <button type="button" class="quick-btn" data-target-input="edit-multiplier-hours" data-increment="24">+24h</button>
+                </div>
+              </div>
             </label>
             <label class="field">
               <span>当前倍率</span>
@@ -232,7 +264,13 @@
           <div class="type-section" data-type="chest">
             <label class="field">
               <span>时长（小时）</span>
-              <input type="number" id="edit-chest-hours" />
+              <div class="input-with-actions">
+                <input type="number" id="edit-chest-hours" />
+                <div class="quick-actions">
+                  <button type="button" class="quick-btn" data-target-input="edit-chest-hours" data-increment="12">+12h</button>
+                  <button type="button" class="quick-btn" data-target-input="edit-chest-hours" data-increment="24">+24h</button>
+                </div>
+              </div>
             </label>
           </div>
           <div class="actions" style="justify-content: flex-end">
