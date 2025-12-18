@@ -102,6 +102,7 @@
   function renderGroups() {
     ensureDefaultGroup();
     const list = document.querySelector("#group-list");
+    if (!list) return;
     const groups = taskState.groups || [];
     const allBtn = document.createElement("button");
     allBtn.className = `group-item ${currentGroupId === "all" ? "active" : ""}`;
@@ -148,6 +149,7 @@
 
   function renderGroupFilter() {
     const wrapper = document.querySelector("#group-filter");
+    if (!wrapper) return;
     wrapper.innerHTML = "";
     const createPill = (id, label) => {
       const pill = document.createElement("button");
@@ -279,6 +281,7 @@
 
   function renderTasks() {
     const grid = document.querySelector("#task-grid");
+    if (!grid) return;
     const tasks = filteredTasks();
     grid.innerHTML = "";
     if (!tasks.length) {
