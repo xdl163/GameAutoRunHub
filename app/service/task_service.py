@@ -1,7 +1,8 @@
 """任务领域服务，遵循三层架构。"""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from fastapi import HTTPException, status
@@ -21,6 +22,8 @@ from app.models import (
 from app.core import config
 from app.repository import device_repository, task_group_repository, task_repository
 from app.service import device_operation_log_service, task_group_service, task_log_service
+
+CN_TZ = timezone(timedelta(hours=8))
 
 
 class TaskPermission:
@@ -46,6 +49,18 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
     return group
 
 
+def _generate_task_name(task_type: TaskTypeEnum) -> str:
+    prefix_map = {
+        TaskTypeEnum.SCORE: "积分",
+        TaskTypeEnum.MULTIPLIER: "倍率",
+        TaskTypeEnum.CHEST: "宝箱",
+    }
+    prefix = prefix_map.get(task_type, "任务")
+    timestamp = datetime.now(CN_TZ).strftime("%Y%m%d%H%M%S")
+    suffix = secrets.token_hex(2)
+    return f"{prefix}任务-{timestamp}-{suffix}"
+
+
 def _update_device_binding(
     db: Session,
     *,
@@ -69,9 +84,6 @@ def _update_device_binding(
             )
         return task
 
-    if prev_device and prev_device.id == device_id:
-        return task
-
     new_device = device_repository.get_by_id(db, device_id)
     if not new_device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
@@ -79,6 +91,18 @@ def _update_device_binding(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权绑定该设备")
     if new_device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
+    if prev_device and prev_device.id == device_id:
+        if prev_device.status != DeviceStatusEnum.RUNNING:
+            prev_device.status = DeviceStatusEnum.RUNNING
+            device_repository.save(db, prev_device)
+            device_operation_log_service.log_action(
+                db,
+                performer=performer,
+                device=prev_device,
+                action=action,
+                detail=f"任务 {task.id} 更新设备状态为运行",
+            )
+        return task
     new_device.status = DeviceStatusEnum.RUNNING
     device_repository.save(db, new_device)
 
@@ -107,7 +131,7 @@ def create_task(
     db: Session,
     *,
     requester: User,
-    name: str,
+    name: str | None,
     task_type: TaskTypeEnum,
     group_id: int,
     device_id: int | None,
@@ -119,6 +143,7 @@ def create_task(
     group = _ensure_group_access(db, requester=requester, group_id=group_id)
     if device_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="创建任务时必须绑定设备")
+    final_name = (name or "").strip() or _generate_task_name(task_type)
     device = device_repository.get_by_id(db, device_id)
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
@@ -127,10 +152,10 @@ def create_task(
     if device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     settings = config.get_settings()
-    start_at = start_time or datetime.now(timezone.utc)
+    start_at = start_time or datetime.now(CN_TZ)
     task = task_repository.create_task(
         db,
-        name=name,
+        name=final_name,
         task_type=task_type,
         group_id=group.id,
         created_by=requester.id,
@@ -222,7 +247,7 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     TaskPermission.ensure_can_manage_task(requester, task, accessible)
 
     _validate_transition(task, action)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(CN_TZ)
 
     group = task_group_repository.get_by_id(db, task.group_id)
     if not group:

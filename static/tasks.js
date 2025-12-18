@@ -221,6 +221,12 @@
     return d && !Number.isNaN(d.getTime()) ? d : now;
   }
 
+  function formatLocalDateTimeInput(date = new Date()) {
+    const offsetMs = date.getTimezoneOffset() * 60000;
+    const local = new Date(date.getTime() - offsetMs);
+    return local.toISOString().slice(0, 16);
+  }
+
   function calculatePausedSeconds(task, now = new Date()) {
     const basePaused = Number(task.paused_seconds || 0);
     if (task.status !== "paused") return Math.max(basePaused, 0);
@@ -306,7 +312,11 @@
     const activeSeconds = elapsedActiveSeconds(task, now);
     const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
     const end = new Date(now.getTime() + remainingSeconds * 1000);
-    const initialMultiplier = Number(detail.initial_multiplier ?? detail.current_multiplier ?? 1);
+    const hasInitialMultiplier =
+      detail.initial_multiplier !== undefined &&
+      detail.initial_multiplier !== null &&
+      Number.isFinite(Number(detail.initial_multiplier));
+    const initialMultiplier = hasInitialMultiplier ? Number(detail.initial_multiplier) : 1;
     const growthPerSecond = Number(detail.current_multiplier ?? 0);
     const currentMultiplier = initialMultiplier + activeSeconds * growthPerSecond;
     return { duration, end, remainingSeconds, currentMultiplier, initialMultiplier, growthPerSecond };
@@ -898,9 +908,11 @@
 
   async function applyEdit(task, payload) {
     const requests = [];
-    if (payload.device !== undefined) {
+    if (!payload.skipDeviceUpdate && payload.device !== undefined) {
       requests.push(
-        requestAndUpdateTask(`/api/tasks/${task.id}/device`, { body: { device_id: payload.device } }),
+        requestAndUpdateTask(`/api/tasks/${task.id}/device`, {
+          body: { device_id: payload.devicePk ?? payload.device },
+        }),
       );
     }
 
@@ -1129,7 +1141,7 @@
     document.querySelector("#task-multiplier-current").value = taskDefaults.multiplier;
     document.querySelector("#task-multiplier-initial").value = taskDefaults.initialMultiplier;
     document.querySelector("#task-chest-duration").value = 12;
-    document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
+    document.querySelector("#task-start").value = formatLocalDateTimeInput(new Date());
     updateTypeSections("#task-modal", createTaskType);
     setCreateTypeButtons(createTaskType);
   }
@@ -1212,10 +1224,9 @@
       alert("只能在自己的分组下创建任务");
       return;
     }
-    const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);
-    if (!name) return alert("请输入任务名称");
+    const start = document.querySelector("#task-start").value || formatLocalDateTimeInput(new Date());
     const payload = {
-      name,
+      name: name || null,
       task_type: type,
       group_id: Number(groupId),
       device_id: validatedDevice.device_pk,
@@ -1246,7 +1257,8 @@
       const created = await resp.json();
       const newTask = normalizeApiTask(created);
       taskState.tasks.push(newTask);
-      logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
+      const displayName = newTask?.name || name || "未命名任务";
+      logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${displayName}」`);
       closeModal("#task-modal");
       saveStateAndRender();
       await refreshAllData();
@@ -1283,6 +1295,7 @@
       }
       if (Number.isFinite(data.default_multiplier)) {
         taskDefaults.multiplier = Number(data.default_multiplier);
+        taskDefaults.initialMultiplier = Number(data.default_multiplier);
       }
     } catch (err) {
       console.warn("获取任务默认配置失败，使用本地默认值", err);
@@ -1320,13 +1333,23 @@
     document.querySelector("#submit-edit")?.addEventListener("click", async () => {
       const task = getSelectedTask();
       if (!task) return;
-      const validatedDevice = await validateDeviceInput(document.querySelector("#edit-device").value, {
-        currentDeviceId: task.device_id,
-      });
-      if (validatedDevice.error) return;
+      const deviceInputValue = document.querySelector("#edit-device").value;
+      const trimmedDevice = (deviceInputValue || "").trim();
+      const unchangedDevice = trimmedDevice && String(trimmedDevice) === String(task.device_id || "");
+      let validatedDevice = { value: null, record: null, device_pk: null, skipUpdate: false };
+      if (unchangedDevice) {
+        validatedDevice = { value: task.device_id, record: null, device_pk: null, skipUpdate: true };
+      } else {
+        validatedDevice = await validateDeviceInput(deviceInputValue, {
+          currentDeviceId: task.device_id,
+        });
+        if (validatedDevice.error) return;
+      }
       const payload = {
         device: validatedDevice.value,
+        devicePk: validatedDevice.device_pk,
         deviceRecord: validatedDevice.record,
+        skipDeviceUpdate: Boolean(validatedDevice.skipUpdate),
         target_group_id: document.querySelector("#edit-group")?.value || null,
         score: null,
         multiplier: null,
