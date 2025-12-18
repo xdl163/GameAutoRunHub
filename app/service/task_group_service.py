@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import RoleEnum, TaskGroup, User
@@ -41,10 +42,27 @@ def ensure_user_default_groups(db: Session, *, owner: User | int) -> tuple[TaskG
     return default_group, completed_group
 
 
+def _attach_owner_meta(db: Session, groups: list[TaskGroup]) -> list[TaskGroup]:
+    if not groups:
+        return groups
+    owner_ids = {g.created_by for g in groups if g.created_by}
+    owners = (
+        {user.id: user for user in db.scalars(select(User).where(User.id.in_(owner_ids))).all()}
+        if owner_ids
+        else {}
+    )
+    for g in groups:
+        owner = owners.get(g.created_by)
+        if owner:
+            g.owner_username = owner.username
+            g.owner_display_name = owner.display_name
+    return groups
+
+
 def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
     default_group, completed_group = ensure_user_default_groups(db, owner=requester)
     if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        return task_group_repository.list_all(db)
+        return _attach_owner_meta(db, task_group_repository.list_all(db))
 
     authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
     groups = task_group_repository.list_owned_or_authorized(
@@ -56,7 +74,7 @@ def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
         groups.insert(0, default_group)
     if completed_group.id not in ensured_ids:
         groups.insert(1, completed_group)
-    return groups
+    return _attach_owner_meta(db, groups)
 
 
 def create_group(
@@ -77,13 +95,15 @@ def create_group(
     if not owner:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="指定的分组拥有者不存在")
 
-    return task_group_repository.create_group(
+    created = task_group_repository.create_group(
         db,
         name=name,
         description=description,
         is_default=False,
         created_by=owner.id,
     )
+    _attach_owner_meta(db, [created])
+    return created
 
 
 def add_managers(

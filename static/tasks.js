@@ -185,6 +185,8 @@
           ...item,
           is_default: true,
           owner: currentUser?.username || "system",
+          owner_username: currentUser?.username || "system",
+          owner_display_name: currentUser?.display_name || currentUser?.username || "system",
           accessors: [],
         });
       }
@@ -267,7 +269,7 @@
         <div>
           <strong>${group.name}</strong>
           <p class="muted">${group.description || "无描述"}</p>
-          <p class="muted mini">所属：${group.owner || "未指定"}</p>
+          <p class="muted mini">所属：${formatOwnerDisplay(group)}</p>
         </div>
         <div class="group-actions">
           <span class="badge">${count}</span>
@@ -308,7 +310,9 @@
           name: g.name,
           description: g.description || "",
           is_default: Boolean(g.is_default),
-          owner: g.owner || g.created_by || g.created_by_username || "",
+          owner: g.owner_username || g.owner || g.created_by || "",
+          owner_username: g.owner_username || g.owner || g.created_by || "",
+          owner_display_name: g.owner_display_name || g.owner || "",
         }));
         taskState.groups = mapped;
         saveTaskState(taskState);
@@ -362,7 +366,7 @@
     if (!field || !select) return;
     const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
     field.style.display = isAdmin ? "flex" : "none";
-    const owners = Array.from(new Set(taskState.groups.map((g) => g.owner).filter(Boolean)));
+    const owners = Array.from(new Set(taskState.groups.map((g) => g.owner_username || g.owner).filter(Boolean)));
     owners.unshift("all");
     select.innerHTML = owners
       .map((owner) => `<option value="${owner}">${owner === "all" ? "全部员工" : owner}</option>`)
@@ -380,6 +384,10 @@
     return `<span class="status-chip" style="background:${meta.color}1a;color:${meta.color}">
       <span class="dot" style="background:${meta.color}"></span>${meta.label}
     </span>`;
+  }
+
+  function formatOwnerDisplay(group) {
+    return group.owner_display_name || group.owner_username || group.owner || "未指定";
   }
 
   function typeChip(type) {

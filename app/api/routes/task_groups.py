@@ -26,6 +26,8 @@ class TaskGroupRead(BaseModel):
     description: str | None
     is_default: bool
     created_by: int
+    owner_username: str | None = None
+    owner_display_name: str | None = None
 
     class Config:
         from_attributes = True
