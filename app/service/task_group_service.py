@@ -1,0 +1,131 @@
+"""任务分组领域服务。"""
+from __future__ import annotations
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.models import RoleEnum, TaskGroup, User
+from app.repository import (
+    group_authorization_repository,
+    task_group_repository,
+    task_repository,
+    user_repository,
+)
+
+DEFAULT_GROUP_NAME = "未分组"
+
+
+def _ensure_default_group(db: Session, *, requester: User) -> TaskGroup:
+    existing = task_group_repository.get_default(db)
+    if existing:
+        return existing
+    return task_group_repository.create_group(
+        db,
+        name=DEFAULT_GROUP_NAME,
+        description="系统默认分组，删除分组后的任务会回收至此",
+        is_default=True,
+        created_by=requester.id,
+    )
+
+
+def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
+    default_group = _ensure_default_group(db, requester=requester)
+    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        return task_group_repository.list_all(db)
+
+    authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
+    groups = task_group_repository.list_owned_or_authorized(
+        db, owner_id=requester.id, authorized_group_ids=authorized_ids
+    )
+    # 确保默认分组一定可见
+    if default_group.id not in [g.id for g in groups]:
+        groups.insert(0, default_group)
+    return groups
+
+
+def create_group(
+    db: Session,
+    *,
+    requester: User,
+    name: str,
+    description: str | None = None,
+    owner_id: int | None = None,
+) -> TaskGroup:
+    existing_default = task_group_repository.get_default(db)
+    if existing_default and existing_default.name == name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="默认分组名称已存在")
+
+    target_owner_id = requester.id if owner_id is None else owner_id
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and target_owner_id != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="普通用户只能创建自己的分组")
+
+    owner = user_repository.get_by_id(db, target_owner_id)
+    if not owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="指定的分组拥有者不存在")
+
+    return task_group_repository.create_group(
+        db,
+        name=name,
+        description=description,
+        is_default=False,
+        created_by=owner.id,
+    )
+
+
+def add_managers(
+    db: Session,
+    *,
+    requester: User,
+    group_id: int,
+    manager_ids: list[int],
+) -> list[int]:
+    group = task_group_repository.get_by_id(db, group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权变更分组管理员")
+
+    added_ids: list[int] = []
+    for user_id in manager_ids:
+        user = user_repository.get_by_id(db, user_id)
+        if not user:
+            continue
+        group_authorization_repository.add_authorization(db, group_id=group_id, user_id=user.id)
+        added_ids.append(user.id)
+    return added_ids
+
+
+def delete_group(db: Session, *, requester: User, group_id: int) -> TaskGroup:
+    group = task_group_repository.get_by_id(db, group_id)
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
+    if group.is_default:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="默认分组不可删除")
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权删除分组")
+
+    default_group = _ensure_default_group(db, requester=requester)
+    task_group_repository.move_tasks_to_group(db, source_group_id=group.id, target_group_id=default_group.id)
+    group_authorization_repository.delete_by_group(db, group_id=group.id)
+    task_group_repository.delete(db, group)
+    return group
+
+
+def resolve_accessible_group_ids(db: Session, *, requester: User) -> list[int]:
+    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        return [g.id for g in task_group_repository.list_all(db)]
+    authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
+    owned_groups = task_group_repository.list_owned_or_authorized(
+        db, owner_id=requester.id, authorized_group_ids=authorized_ids
+    )
+    return [g.id for g in owned_groups]
+
+
+__all__ = [
+    "add_managers",
+    "create_group",
+    "delete_group",
+    "list_groups",
+    "resolve_accessible_group_ids",
+    "DEFAULT_GROUP_NAME",
+]

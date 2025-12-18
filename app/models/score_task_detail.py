@@ -13,5 +13,6 @@ class ScoreTaskDetail(Base):
     task_id = Column(Integer, ForeignKey("tasks.id"), unique=True, nullable=False, comment="关联任务ID")
     point_rate = Column(Integer, nullable=False, default=7000, comment="积分速率（每小时积分）")
     target_points = Column(Integer, nullable=False, comment="目标积分")
+    current_points = Column(Integer, nullable=False, default=0, comment="当前积分")
 
     task = relationship("Task", back_populates="score_detail")
