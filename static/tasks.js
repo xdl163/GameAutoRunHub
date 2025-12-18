@@ -51,6 +51,7 @@
   const taskDefaults = {
     scoreRate: 7000,
     multiplier: 1.0,
+    initialMultiplier: 1.0,
   };
   const COMPLETED_GROUP_KEYWORDS = ["g-completed", "已完成"];
 
@@ -224,8 +225,10 @@
     const activeSeconds = elapsedActiveSeconds(task, now);
     const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
     const end = new Date(now.getTime() + remainingSeconds * 1000);
-    const currentMultiplier = (detail.current_multiplier || 1) + activeSeconds * 1.15;
-    return { duration, end, remainingSeconds, currentMultiplier };
+    const initialMultiplier = Number(detail.initial_multiplier ?? detail.current_multiplier ?? 1);
+    const growthPerSecond = Number(detail.current_multiplier ?? 0);
+    const currentMultiplier = initialMultiplier + activeSeconds * growthPerSecond;
+    return { duration, end, remainingSeconds, currentMultiplier, initialMultiplier, growthPerSecond };
   }
 
   function computeChestMeta(task, now = new Date()) {
@@ -427,6 +430,8 @@
           <div><span class="muted mini">时长</span><strong>${meta.duration}小时</strong></div>
           <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
           <div><span class="muted mini">截至时间</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
+          <div><span class="muted mini">初始倍率</span><strong>${meta.initialMultiplier.toFixed(2)}</strong></div>
+          <div><span class="muted mini">倍率增长</span><strong>${meta.growthPerSecond.toFixed(2)}/秒</strong></div>
           <div><span class="muted mini">当前倍率</span><strong data-field="current-multiplier" data-task-id="${task.id}">${meta.currentMultiplier.toFixed(2)}</strong></div>
         </div>
       `;
@@ -692,6 +697,7 @@
     }
     if (task.task_type === "multiplier") {
       document.querySelector("#edit-multiplier-hours").value = task.multiplier?.duration_hours || 0;
+      document.querySelector("#edit-multiplier-initial").value = task.multiplier?.initial_multiplier ?? 1.0;
       document.querySelector("#edit-multiplier-current").value = task.multiplier?.current_multiplier || 1.0;
     }
     if (task.task_type === "chest") {
@@ -776,6 +782,10 @@
       if (payload.multiplier.duration_hours !== undefined) {
         task.multiplier.duration_hours = payload.multiplier.duration_hours;
         changes.push(`时长调整为 ${payload.multiplier.duration_hours} 小时`);
+      }
+      if (payload.multiplier.initial_multiplier !== undefined) {
+        task.multiplier.initial_multiplier = payload.multiplier.initial_multiplier;
+        changes.push(`初始倍率调整为 ${payload.multiplier.initial_multiplier}`);
       }
       if (payload.multiplier.current_multiplier !== undefined) {
         task.multiplier.current_multiplier = payload.multiplier.current_multiplier;
@@ -974,6 +984,7 @@
     document.querySelector("#task-score-target").value = 360000;
     document.querySelector("#task-multiplier-duration").value = 12;
     document.querySelector("#task-multiplier-current").value = taskDefaults.multiplier;
+    document.querySelector("#task-multiplier-initial").value = taskDefaults.initialMultiplier;
     document.querySelector("#task-chest-duration").value = 12;
     document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
     updateTypeSections("#task-modal", createTaskType);
@@ -1055,6 +1066,7 @@
     if (type === "multiplier") {
       newTask.multiplier = {
         duration_hours: Number(document.querySelector("#task-multiplier-duration").value || 0),
+        initial_multiplier: Number(document.querySelector("#task-multiplier-initial").value || 1.0),
         current_multiplier: Number(document.querySelector("#task-multiplier-current").value || 1.0),
       };
     }
@@ -1154,6 +1166,7 @@
       if (task.task_type === "multiplier") {
         payload.multiplier = {
           duration_hours: Number(document.querySelector("#edit-multiplier-hours").value || 0),
+          initial_multiplier: Number(document.querySelector("#edit-multiplier-initial").value || 1.0),
           current_multiplier: Number(document.querySelector("#edit-multiplier-current").value || 0),
         };
       }

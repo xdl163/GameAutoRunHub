@@ -81,7 +81,7 @@ const DEFAULT_TASKS = [
     updated_at: "2024-10-02T05:40:00Z",
     start_time: "2024-10-02T03:00:00Z",
     paused_seconds: 3600,
-    multiplier: { duration_hours: 12, current_multiplier: 4.6 },
+    multiplier: { duration_hours: 12, initial_multiplier: 4.6, current_multiplier: 0.01 },
   },
   {
     id: 103,

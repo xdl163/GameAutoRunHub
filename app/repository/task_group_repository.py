@@ -21,6 +21,11 @@ def get_default(db: Session) -> Optional[TaskGroup]:
     return db.scalars(select(TaskGroup).where(TaskGroup.is_default.is_(True))).first()
 
 
+def list_defaults_for_owner(db: Session, *, owner_id: int) -> list[TaskGroup]:
+    stmt = select(TaskGroup).where(TaskGroup.created_by == owner_id, TaskGroup.is_default.is_(True)).order_by(TaskGroup.id)
+    return db.scalars(stmt).all()
+
+
 def list_all(db: Session) -> List[TaskGroup]:
     return db.scalars(_build_base_query().order_by(TaskGroup.id)).all()
 
@@ -29,6 +34,11 @@ def list_by_ids(db: Session, group_ids: Sequence[int]) -> List[TaskGroup]:
     if not group_ids:
         return []
     stmt = _build_base_query().where(TaskGroup.id.in_(group_ids)).order_by(TaskGroup.id)
+    return db.scalars(stmt).all()
+
+
+def list_by_owner(db: Session, *, owner_id: int) -> List[TaskGroup]:
+    stmt = _build_base_query().where(TaskGroup.created_by == owner_id).order_by(TaskGroup.id)
     return db.scalars(stmt).all()
 
 
@@ -84,8 +94,10 @@ __all__ = [
     "delete",
     "get_by_id",
     "get_default",
+    "list_defaults_for_owner",
     "list_all",
     "list_by_ids",
+    "list_by_owner",
     "list_owned_or_authorized",
     "move_tasks_to_group",
     "save",

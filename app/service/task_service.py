@@ -144,9 +144,14 @@ def create_task(
             target_points=score_detail.get("target_points") if score_detail else 360000,
         )
     if task_type is TaskTypeEnum.MULTIPLIER:
+        initial_multiplier_value = None
+        if multiplier_detail is not None:
+            initial_multiplier_value = multiplier_detail.get("initial_multiplier")
+        initial_multiplier_value = 1.0 if initial_multiplier_value is None else float(initial_multiplier_value)
         task.multiplier_detail = MultiplierTaskDetail(
             task_id=task.id,
             duration_hours=multiplier_detail.get("duration_hours") if multiplier_detail else 0,
+            initial_multiplier=initial_multiplier_value,
             current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else settings.default_multiplier,
         )
     if task_type is TaskTypeEnum.CHEST:
@@ -300,6 +305,7 @@ def update_detail(
     score_target: int | None = None,
     score_rate: int | None = None,
     multiplier_hours: int | None = None,
+    multiplier_initial: float | None = None,
     multiplier_increment: float | None = None,
     chest_hours: int | None = None,
 ) -> Task:
@@ -321,6 +327,9 @@ def update_detail(
         if multiplier_hours is not None:
             task.multiplier_detail.duration_hours = int(multiplier_hours)
             changes.append(f"时长调整为 {multiplier_hours} 小时")
+        if multiplier_initial is not None:
+            task.multiplier_detail.initial_multiplier = float(multiplier_initial)
+            changes.append(f"初始倍率调整为 {multiplier_initial}")
         if multiplier_increment is not None:
             task.multiplier_detail.current_multiplier = float(multiplier_increment)
             changes.append(f"当前倍率调整为 {multiplier_increment}")

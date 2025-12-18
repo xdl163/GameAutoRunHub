@@ -51,9 +51,17 @@ def delete_by_group(db: Session, *, group_id: int) -> None:
     db.commit()
 
 
+def delete_by_user(db: Session, *, user_id: int) -> None:
+    auths = db.scalars(select(GroupAuthorization).where(GroupAuthorization.user_id == user_id)).all()
+    for auth in auths:
+        db.delete(auth)
+    db.commit()
+
+
 __all__ = [
     "add_authorization",
     "delete_by_group",
+    "delete_by_user",
     "list_authorized_users",
     "list_group_ids_for_user",
     "remove_authorizations",
