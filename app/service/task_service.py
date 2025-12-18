@@ -183,19 +183,10 @@ def list_tasks(
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
 ) -> list[Task]:
-    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        group_ids = [group_id] if group_id else None
-        return task_repository.list_tasks(
-            db,
-            group_ids=group_ids or [],
-            include_all=False,
-            task_type=task_type,
-            status=status,
-        )
-
     accessible_group_ids = task_group_service.resolve_accessible_group_ids(db, requester=requester)
-    if group_id and group_id not in accessible_group_ids:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该分组任务")
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        if group_id and group_id not in accessible_group_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该分组任务")
 
     target_groups = accessible_group_ids if group_id is None else [group_id]
     return task_repository.list_tasks(

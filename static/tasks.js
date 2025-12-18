@@ -142,13 +142,15 @@
 
   function normalizeApiTask(apiTask) {
     if (!apiTask) return null;
+    const groupId = apiTask.group_id ?? apiTask.groupId;
+    const deviceId = apiTask.device_identifier || apiTask.device_id || apiTask.deviceId;
     const base = {
       id: apiTask.id,
       name: apiTask.name,
       task_type: apiTask.task_type,
       status: apiTask.status,
-      group_id: String(apiTask.group_id),
-      device_id: apiTask.device_id,
+      group_id: groupId != null ? String(groupId) : apiTask.group_id,
+      device_id: deviceId,
       owner: currentUser?.username || apiTask.created_by,
       start_time: apiTask.start_time,
       end_time: apiTask.end_time,
