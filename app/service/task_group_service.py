@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.models import RoleEnum, TaskGroup, User
+from app.models import RoleEnum, TaskGroup, User, Task
 from app.repository import (
     group_authorization_repository,
     task_group_repository,
