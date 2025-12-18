@@ -20,7 +20,7 @@ class TaskCreate(BaseModel):
     name: str
     task_type: TaskTypeEnum
     group_id: int
-    device_id: int | None = None
+    device_id: int
     start_time: datetime | None = None
     score_point_rate: int | None = None
     score_target: int | None = None

@@ -38,6 +38,8 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
     group = task_group_repository.get_by_id(db, group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
+    if group.name == "已完成":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已完成分组不可创建新任务")
     if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
         return group
     if group.created_by != requester.id:
@@ -111,6 +113,13 @@ def create_task(
     chest_detail: dict | None = None,
 ) -> Task:
     group = _ensure_group_access(db, requester=requester, group_id=group_id)
+    if device_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="创建任务时必须绑定设备")
+    device = device_repository.get_by_id(db, device_id)
+    if not device:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+    if device.status != DeviceStatusEnum.IDLE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     task = task_repository.create_task(
         db,
         name=name,
@@ -139,8 +148,7 @@ def create_task(
             duration_hours=chest_detail.get("duration_hours") if chest_detail else 0,
         )
 
-    if device_id:
-        _update_device_binding(db, performer=requester, task=task, device_id=device_id, action="bind_task")
+    _update_device_binding(db, performer=requester, task=task, device_id=device_id, action="bind_task")
 
     saved = task_repository.save(db, task)
     task_log_service.log_action(

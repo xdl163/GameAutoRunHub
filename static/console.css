@@ -528,6 +528,42 @@ button.ghost.mini.danger {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.three-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.inline-field {
+  flex-direction: row;
+  align-items: center;
+}
+.inline-field span {
+  min-width: 90px;
+  white-space: nowrap;
+}
+.inline-field input,
+.inline-field select {
+  flex: 1;
+}
+.input-with-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quick-btn {
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: #eef2ff;
+  color: #312e81;
+  border: 1px solid #c7d2fe;
+  cursor: pointer;
+}
 
 .suggestion-list {
   margin-top: 4px;

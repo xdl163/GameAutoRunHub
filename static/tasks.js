@@ -47,6 +47,7 @@
   ];
 
   let createTaskType = "score";
+  const COMPLETED_GROUP_KEYWORDS = ["g-completed", "已完成"];
 
   async function loadUserOptions() {
     try {
@@ -491,9 +492,15 @@
     return Array.from(seen.values());
   }
 
-  async function validateDeviceInput(rawValue) {
+  async function validateDeviceInput(rawValue, { allowEmpty = true } = {}) {
     const trimmed = (rawValue || "").trim();
-    if (!trimmed) return { value: null, record: null };
+    if (!trimmed) {
+      if (!allowEmpty) {
+        alert("请先输入设备ID");
+        return { error: true };
+      }
+      return { value: null, record: null };
+    }
     await ensureDeviceOptions(trimmed);
     const match = getKnownDevices().find(
       (item) => String(item.device_id).toLowerCase() === trimmed.toLowerCase(),
@@ -888,9 +895,8 @@
   function populateGroupSelects() {
     const select = document.querySelector("#task-group");
     if (!select) return;
-    select.innerHTML = taskState.groups
-      .map((g) => `<option value="${g.id}">${g.name}</option>`)
-      .join("");
+    const options = taskState.groups.filter((g) => !isCompletedGroup(g));
+    select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
   }
 
   function setCreateTypeButtons(type) {
@@ -923,8 +929,13 @@
     const type = createTaskType;
     const groupId = document.querySelector("#task-group").value;
     const deviceInput = document.querySelector("#task-device").value;
-    const validatedDevice = await validateDeviceInput(deviceInput);
+    const validatedDevice = await validateDeviceInput(deviceInput, { allowEmpty: false });
     if (validatedDevice.error) return;
+    const targetGroup = taskState.groups.find((g) => g.id === groupId);
+    if (isCompletedGroup(targetGroup)) {
+      alert("已完成分组不可选择，请选择其他分组");
+      return;
+    }
     const start = document.querySelector("#task-start").value;
     if (!name) return alert("请输入任务名称");
     const newTask = {
@@ -961,6 +972,23 @@
     logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
     closeModal("#task-modal");
     saveStateAndRender();
+  }
+
+  function isCompletedGroup(group) {
+    if (!group) return false;
+    return COMPLETED_GROUP_KEYWORDS.includes(group.id) || COMPLETED_GROUP_KEYWORDS.includes(group.name);
+  }
+
+  function bindQuickAddButtons() {
+    document.querySelectorAll("[data-target-input][data-increment]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = document.querySelector(`#${btn.dataset.targetInput}`);
+        if (!target) return;
+        const increment = Number(btn.dataset.increment || 0);
+        const current = Number(target.value || 0);
+        target.value = current + increment;
+      });
+    });
   }
 
   function bindEvents() {
@@ -1064,6 +1092,7 @@
     bindModalClose();
     bindDeviceSuggest("#task-device", "#task-device-suggest");
     bindDeviceSuggest("#edit-device", "#edit-device-suggest");
+    bindQuickAddButtons();
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
