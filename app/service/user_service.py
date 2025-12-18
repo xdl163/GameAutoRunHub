@@ -44,6 +44,12 @@ def list_users(db: Session, *, requester: User):
     return user_repository.list_users(db)
 
 
+def list_user_options(db: Session, *, requester: User):
+    if not requester:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未认证")
+    return user_repository.list_active_users(db)
+
+
 def create_user(
     db: Session,
     *,
@@ -191,4 +197,5 @@ __all__ = [
     "delete_user",
     "update_password",
     "reset_password",
+    "list_user_options",
 ]

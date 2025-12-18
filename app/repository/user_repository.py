@@ -21,6 +21,10 @@ def list_users(db: Session) -> List[User]:
     return db.scalars(select(User)).all()
 
 
+def list_active_users(db: Session) -> List[User]:
+    return db.scalars(select(User).where(User.is_active.is_(True))).all()
+
+
 def create_user(
     db: Session,
     *,

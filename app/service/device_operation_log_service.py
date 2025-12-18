@@ -9,7 +9,13 @@ from app.models.device import Device
 from app.models.user import User
 from app.repository import device_operation_log_repository
 
-ALLOWED_ACTIONS = {"create_device", "update_device", "delete_device"}
+ALLOWED_ACTIONS = {
+    "create_device",
+    "update_device",
+    "delete_device",
+    "bind_task",
+    "unbind_task",
+}
 
 
 def log_action(

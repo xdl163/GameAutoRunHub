@@ -35,7 +35,7 @@ async def root():
 
 
 @app.get("/tasks", summary="任务管理", include_in_schema=False)
-async def tasks_page(current=Depends(get_current_user)):
+async def tasks_page():
     return FileResponse("static/tasks.html")
 
 

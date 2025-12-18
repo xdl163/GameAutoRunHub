@@ -5,6 +5,9 @@ from . import (
     config_service,
     device_operation_log_service,
     device_service,
+    task_group_service,
+    task_log_service,
+    task_service,
     user_service,
 )
 
@@ -13,5 +16,8 @@ __all__ = [
     "config_service",
     "device_operation_log_service",
     "device_service",
+    "task_group_service",
+    "task_log_service",
+    "task_service",
     "user_service",
 ]

@@ -5,6 +5,10 @@ from . import (
     config_repository,
     device_operation_log_repository,
     device_repository,
+    group_authorization_repository,
+    task_group_repository,
+    task_operation_log_repository,
+    task_repository,
     user_repository,
 )
 
@@ -13,5 +17,9 @@ __all__ = [
     "config_repository",
     "device_operation_log_repository",
     "device_repository",
+    "group_authorization_repository",
+    "task_group_repository",
+    "task_operation_log_repository",
+    "task_repository",
     "user_repository",
 ]
