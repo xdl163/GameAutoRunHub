@@ -116,6 +116,15 @@ class GroupManagerPayload(BaseModel):
     manager_ids: List[int]
 
 
+class UserOption(BaseModel):
+    id: int
+    username: str
+    display_name: str | None
+
+    class Config:
+        from_attributes = True
+
+
 class TaskCreate(BaseModel):
     name: str
     task_type: TaskTypeEnum
@@ -392,6 +401,17 @@ async def create_user(payload: UserCreate, current=Depends(get_current_user), db
 async def list_users(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
     return user_service.list_users(db, requester=user)
+
+
+@router.get(
+    "/users/options",
+    response_model=List[UserOption],
+    summary="用户选项（用于分组授权选择）",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_user_options(current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    return user_service.list_user_options(db, requester=user)
 
 
 @router.patch(

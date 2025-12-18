@@ -10,6 +10,9 @@
   let selectedTaskId = null;
   let selectedGroupId = null;
   let manageAccessSelection = [];
+  let manageAccessKeyword = "";
+  let userOptions = [];
+  let userLoadPromise = null;
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -33,6 +36,32 @@
   ];
 
   let createTaskType = "score";
+
+  async function loadUserOptions() {
+    try {
+      const resp = await window.ConsoleShared.apiFetch("/api/users/options");
+      if (!resp.ok) throw new Error(`加载用户列表失败 ${resp.status}`);
+      userOptions = await resp.json();
+    } catch (err) {
+      console.warn("加载用户列表失败，使用本地候选项降级", err);
+      userOptions = collectUserCandidates().map((name, idx) => ({
+        id: idx + 1,
+        username: name,
+        display_name: "",
+      }));
+    }
+  }
+
+  async function ensureUserOptionsLoaded() {
+    if (userOptions.length) return userOptions;
+    if (!userLoadPromise) {
+      userLoadPromise = loadUserOptions().finally(() => {
+        userLoadPromise = null;
+      });
+    }
+    await userLoadPromise;
+    return userOptions;
+  }
 
   function fmtDate(iso) {
     if (!iso) return "-";
@@ -156,7 +185,7 @@
       });
       button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
         evt.stopPropagation();
-        openGroupManageModal(group);
+        openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
       });
       if (!group.is_default) {
         button.querySelector("[data-delete]")?.addEventListener("click", (evt) => {
@@ -457,11 +486,17 @@
     openModal("#move-modal");
   }
 
-  function openGroupManageModal(group) {
+  async function openGroupManageModal(group) {
     setSelectedGroup(group);
     document.querySelector("#manage-group-name").value = group.name || "";
     document.querySelector("#manage-group-desc").value = group.description || "";
-    manageAccessSelection = [...new Set(group.accessors || [])];
+    manageAccessSelection = (group.accessors || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id));
+    manageAccessKeyword = "";
+    const accessInput = document.querySelector("#manage-access-input");
+    if (accessInput) accessInput.value = "";
+    await ensureUserOptionsLoaded();
     renderManageAccessList();
     openModal("#group-manage-modal");
   }
@@ -557,27 +592,53 @@
     return Array.from(names).sort();
   }
 
-  function renderManageAccessList() {
+  function fallbackUserOptions() {
+    return collectUserCandidates().map((name, idx) => ({
+      id: idx + 1,
+      username: name,
+      display_name: "",
+    }));
+  }
+
+  function formatUserLabel(user) {
+    return user.display_name ? `${user.display_name}（${user.username}）` : user.username;
+  }
+
+  function renderManageAccessList(keyword = manageAccessKeyword) {
     const container = document.querySelector("#manage-access-list");
     if (!container) return;
-    const candidates = collectUserCandidates();
-    container.innerHTML = candidates
+    const keywordLower = keyword.trim().toLowerCase();
+    const options = (userOptions.length ? userOptions : fallbackUserOptions()).filter((user) => {
+      if (!keywordLower) return true;
+      return (
+        user.username.toLowerCase().includes(keywordLower) ||
+        (user.display_name || "").toLowerCase().includes(keywordLower)
+      );
+    });
+
+    if (!options.length) {
+      container.innerHTML = `<p class="muted mini">暂无匹配成员</p>`;
+      return;
+    }
+
+    container.innerHTML = options
+      .slice(0, 30)
       .map(
-        (name) => `
-        <button type="button" class="pill selectable ${manageAccessSelection.includes(name) ? "active" : ""}" data-name="${name}">
-          ${name}
+        (user) => `
+        <button type="button" class="pill selectable ${manageAccessSelection.includes(Number(user.id)) ? "active" : ""}" data-id="${user.id}">
+          ${formatUserLabel(user)}
         </button>`
       )
       .join("");
 
-    container.querySelectorAll("[data-name]").forEach((btn) => {
+    container.querySelectorAll("[data-id]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const name = btn.dataset.name;
-        if (!name) return;
-        if (manageAccessSelection.includes(name)) {
-          manageAccessSelection = manageAccessSelection.filter((n) => n !== name);
+        const id = Number(btn.dataset.id);
+        if (!Number.isFinite(id)) return;
+        if (manageAccessSelection.includes(id)) {
+          manageAccessSelection = manageAccessSelection.filter((n) => n !== id);
         } else {
-          manageAccessSelection.push(name);
+          manageAccessSelection.push(id);
         }
         renderManageAccessList();
       });
@@ -708,7 +769,6 @@
     const type = createTaskType;
     const groupId = document.querySelector("#task-group").value;
     const device = document.querySelector("#task-device").value.trim();
-    const owner = document.querySelector("#task-owner").value.trim() || currentUser.username;
     const start = document.querySelector("#task-start").value;
     if (!name) return alert("请输入任务名称");
     const newTask = {
@@ -718,7 +778,7 @@
       status: "pending",
       group_id: groupId,
       device_id: device || null,
-      owner,
+      owner: currentUser.username,
       start_time: start || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -748,11 +808,8 @@
 
   function toggleOwnerFields() {
     const groupOwnerField = document.querySelector("#group-owner-field");
-    const taskOwnerField = document.querySelector("#task-owner-field");
     const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
-    [groupOwnerField, taskOwnerField].forEach((field) => {
-      if (field) field.style.display = isAdmin ? "flex" : "none";
-    });
+    if (groupOwnerField) groupOwnerField.style.display = isAdmin ? "flex" : "none";
   }
 
   function bindEvents() {
@@ -765,7 +822,6 @@
     document.querySelector("#create-task-btn")?.addEventListener("click", () => {
       populateGroupSelects();
       resetTaskForm();
-      document.querySelector("#task-owner").value = currentUser.username;
       openModal("#task-modal");
     });
     document.querySelector("#submit-group")?.addEventListener("click", createGroup);
@@ -840,28 +896,42 @@
       renderGroups();
       renderTasks();
     });
-    document.querySelector("#manage-access-input")?.addEventListener("keydown", (evt) => {
-      if (evt.key === "Enter") {
-        evt.preventDefault();
-        const value = evt.target.value.trim();
-        if (value) {
-          if (!manageAccessSelection.includes(value)) {
-            manageAccessSelection.push(value);
+    const manageAccessInput = document.querySelector("#manage-access-input");
+    if (manageAccessInput) {
+      manageAccessInput.addEventListener("input", (evt) => {
+        manageAccessKeyword = evt.target.value || "";
+        renderManageAccessList();
+      });
+      manageAccessInput.addEventListener("keydown", (evt) => {
+        if (evt.key === "Enter") {
+          evt.preventDefault();
+          const keyword = (evt.target.value || "").trim().toLowerCase();
+          const options = (userOptions.length ? userOptions : fallbackUserOptions()).filter(
+            (user) =>
+              user.username.toLowerCase().includes(keyword) ||
+              (user.display_name || "").toLowerCase().includes(keyword)
+          );
+          const first = options[0];
+          if (first) {
+            const id = Number(first.id);
+            if (!manageAccessSelection.includes(id)) {
+              manageAccessSelection.push(id);
+              renderManageAccessList();
+            }
           }
-          evt.target.value = "";
-          renderManageAccessList();
         }
-      }
-    });
+      });
+    }
     bindModalClose();
     bindSuggest("#task-device", "#task-device-suggest");
     bindSuggest("#edit-device", "#edit-device-suggest");
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
     currentUser = initConsoleShell("tasks");
     if (!currentUser) return;
 
+    await ensureUserOptionsLoaded();
     populateGroupSelects();
     toggleOwnerFields();
     renderOwnerFilter();
