@@ -17,6 +17,8 @@
   let currentUser = null;
   let editingId = null;
   let devicesCache = [];
+  let userOptionsCache = [];
+  let userOptionsPromise = null;
 
   function canManage() {
     return ["admin", "super_admin"].includes(currentUser?.role);
@@ -27,19 +29,19 @@
     const deviceId = document.querySelector("#filter-device-id").value.trim();
     const taskIdRaw = document.querySelector("#filter-task-id").value.trim();
     const status = document.querySelector("#filter-status").value;
-    const idleOnly = document.querySelector("#filter-idle-only").checked;
     const creatorUsername = document.querySelector("#filter-username")?.value.trim();
 
+    const taskId = Number.parseInt(taskIdRaw, 10);
+
     if (deviceId) params.set("device_id", deviceId);
-    if (taskIdRaw) params.set("task_id", Number(taskIdRaw));
+    if (!Number.isNaN(taskId)) params.set("task_id", taskId);
     if (status) params.set("status", status);
-    if (idleOnly) params.set("idle_only", "true");
     if (creatorUsername && canManage()) params.set("username", creatorUsername);
 
     const resp = await apiFetch(`/api/devices?${params.toString()}`);
     if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.detail || "加载设备失败");
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || "加载设备失败");
     }
     return resp.json();
   }
@@ -87,7 +89,9 @@
       deleteBtn.disabled = !canManage();
       deleteBtn.addEventListener("click", async () => {
         if (!canManage()) return;
-        if (!confirm(`确认删除设备 ${device.device_id} 吗？`)) return;
+        const taskFilter = document.querySelector("#filter-task-id")?.value.trim();
+        const filterHint = taskFilter ? `（任务ID筛选：${taskFilter}）` : "";
+        if (!confirm(`确认删除设备 ${device.device_id}${filterHint}吗？`)) return;
         deleteBtn.disabled = true;
         try {
           const resp = await apiFetch(`/api/devices/${device.id}`, { method: "DELETE" });
@@ -113,14 +117,15 @@
   async function refreshDevices() {
     const rows = document.querySelector("#device-rows");
     rows.innerHTML = `<tr><td colspan="8" style="text-align:center" class="muted">加载中...</td></tr>`;
-      try {
-        devicesCache = await fetchDevices();
-        updateSummary(devicesCache);
-        renderDevices(devicesCache);
-      } catch (err) {
-        rows.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
-      }
+
+    try {
+      devicesCache = await fetchDevices();
+      updateSummary(devicesCache);
+      renderDevices(devicesCache);
+    } catch (err) {
+      rows.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
     }
+  }
 
   async function handleCreate() {
     const errorEl = document.querySelector("#create-device-error");
@@ -224,14 +229,106 @@
       document.querySelector("#filter-device-id").value = "";
       document.querySelector("#filter-task-id").value = "";
       document.querySelector("#filter-status").value = "";
-      document.querySelector("#filter-idle-only").checked = false;
       const usernameField = document.querySelector("#filter-username");
       if (usernameField) usernameField.value = "";
+      const suggest = document.querySelector("#username-suggest");
+      if (suggest) {
+        suggest.innerHTML = "";
+        suggest.classList.remove("active");
+      }
       refreshDevices();
     });
-    document.querySelector("#filter-idle-only").addEventListener("change", refreshDevices);
     document.querySelector("#close-device-modal").addEventListener("click", closeEditModal);
     document.querySelector("#save-device").addEventListener("click", handleUpdate);
+  }
+
+  async function loadUserOptions() {
+    if (userOptionsPromise) return userOptionsPromise;
+    userOptionsPromise = (async () => {
+      try {
+        const resp = await apiFetch("/api/users/options");
+        if (!resp.ok) throw new Error("加载用户列表失败");
+        userOptionsCache = (await resp.json()) || [];
+      } catch (err) {
+        console.warn("加载用户选项失败", err);
+        userOptionsCache = [];
+      } finally {
+        userOptionsPromise = null;
+      }
+      return userOptionsCache;
+    })();
+    return userOptionsPromise;
+  }
+
+  async function ensureUserOptions() {
+    if (userOptionsCache.length) return userOptionsCache;
+    return loadUserOptions();
+  }
+
+  function formatUsername(option) {
+    if (!option) return "";
+    return option.display_name ? `${option.display_name}（${option.username}）` : option.username;
+  }
+
+  function bindUsernameSuggest() {
+    const input = document.querySelector("#filter-username");
+    const list = document.querySelector("#username-suggest");
+    if (!input || !list) return;
+
+    const render = (options, keyword) => {
+      const trimmed = (keyword || "").trim().toLowerCase();
+      const filtered = options.filter((opt) => {
+        const uname = (opt.username || "").toLowerCase();
+        const display = (opt.display_name || "").toLowerCase();
+        return !trimmed || uname.includes(trimmed) || display.includes(trimmed);
+      });
+      const displayList = filtered.length ? filtered : options;
+      if (!displayList.length) {
+        list.classList.remove("active");
+        list.innerHTML = "";
+        return;
+      }
+      list.innerHTML = displayList
+        .slice(0, 8)
+        .map((opt) => `<div class="suggestion-item" data-username="${opt.username}">${formatUsername(opt)}</div>`)
+        .join("");
+      list.classList.add("active");
+    };
+
+    const refreshList = async () => {
+      const options = await ensureUserOptions();
+      render(options, input.value);
+    };
+
+    input.addEventListener("input", refreshList);
+    input.addEventListener("focus", refreshList);
+    input.addEventListener("blur", () => setTimeout(() => list.classList.remove("active"), 150));
+    list.addEventListener("click", (evt) => {
+      const target = evt.target;
+      const username = target?.dataset?.username;
+      if (!username) return;
+      input.value = username;
+      list.classList.remove("active");
+      refreshDevices();
+    });
+  }
+
+  function bindFilterShortcuts() {
+    const selectors = ["#filter-device-id", "#filter-username", "#filter-task-id"];
+    selectors.forEach((selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return;
+      el.addEventListener("keydown", (evt) => {
+        if (evt.key === "Enter") {
+          refreshDevices();
+        }
+      });
+    });
+
+    const statusSelect = document.querySelector("#filter-status");
+    if (statusSelect) {
+      statusSelect.addEventListener("change", refreshDevices);
+    }
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
@@ -243,7 +340,12 @@
       if (usernameField) usernameField.style.display = "none";
     }
 
+    if (canManage()) {
+      bindUsernameSuggest();
+    }
+
     bindEvents();
+    bindFilterShortcuts();
     await refreshDevices();
   });
 })();
