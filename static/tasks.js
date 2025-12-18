@@ -202,7 +202,9 @@
       throw new Error(data.detail || `请求失败 ${resp.status}`);
     }
     const data = await resp.json();
-    return upsertTask(normalizeApiTask(data));
+    const updated = upsertTask(normalizeApiTask(data));
+    await refreshAllData();
+    return updated;
   }
 
   function isOwnedGroup(group) {
@@ -336,7 +338,9 @@
     list.appendChild(allBtn);
 
     groups.forEach((group) => {
-      const count = taskState.tasks.filter((t) => t.group_id === group.id).length;
+      const count = Number.isFinite(Number(group.task_count))
+        ? Number(group.task_count)
+        : taskState.tasks.filter((t) => t.group_id === group.id).length;
       const button = document.createElement("button");
       button.className = `group-item ${currentGroupId === group.id ? "active" : ""}`;
       const allowDelete = isOwnedGroup(group) && !group.is_default;
@@ -388,6 +392,7 @@
           owner: g.owner_username || g.owner || g.created_by || "",
           owner_username: g.owner_username || g.owner || g.created_by || "",
           owner_display_name: g.owner_display_name || g.owner || "",
+          task_count: Number(g.task_count ?? 0),
         }));
         taskState.groups = mapped;
         saveTaskState(taskState);
@@ -521,6 +526,10 @@
       console.warn("从服务端加载任务失败", err);
       alert(err.message || "加载任务失败，请稍后重试");
     }
+  }
+
+  async function refreshAllData() {
+    await Promise.all([reloadGroupsFromServer(), loadTasksFromServer(currentGroupId)]);
   }
 
   function deviceLine(task) {
@@ -1207,6 +1216,7 @@
       logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
       closeModal("#task-modal");
       saveStateAndRender();
+      await refreshAllData();
     } catch (err) {
       console.warn("创建任务失败", err);
       alert(err.message || "创建任务失败，请稍后重试");
@@ -1375,6 +1385,7 @@
     startRealtimeTicker();
     setCreateTypeButtons(createTaskType);
     updateTypeSections("#task-modal", createTaskType);
+    setInterval(refreshAllData, 5000);
     bindEvents();
   });
 })();

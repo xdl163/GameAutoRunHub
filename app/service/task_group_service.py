@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.models import RoleEnum, TaskGroup, User
@@ -59,10 +59,25 @@ def _attach_owner_meta(db: Session, groups: list[TaskGroup]) -> list[TaskGroup]:
     return groups
 
 
+def _attach_task_counts(db: Session, groups: list[TaskGroup]) -> list[TaskGroup]:
+    if not groups:
+        return groups
+    group_ids = [g.id for g in groups]
+    counts = (
+        db.execute(select(Task.group_id, func.count()).where(Task.group_id.in_(group_ids)).group_by(Task.group_id))
+        .all()
+    )
+    count_map = {gid: cnt for gid, cnt in counts}
+    for g in groups:
+        g.task_count = int(count_map.get(g.id, 0))
+    return groups
+
+
 def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
     default_group, completed_group = ensure_user_default_groups(db, owner=requester)
     if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        return _attach_owner_meta(db, task_group_repository.list_all(db))
+        groups = task_group_repository.list_all(db)
+        return _attach_task_counts(db, _attach_owner_meta(db, groups))
 
     authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
     groups = task_group_repository.list_owned_or_authorized(
@@ -74,7 +89,7 @@ def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
         groups.insert(0, default_group)
     if completed_group.id not in ensured_ids:
         groups.insert(1, completed_group)
-    return _attach_owner_meta(db, groups)
+    return _attach_task_counts(db, _attach_owner_meta(db, groups))
 
 
 def create_group(
