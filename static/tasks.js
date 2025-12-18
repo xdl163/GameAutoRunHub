@@ -429,9 +429,9 @@
       `;
 
       card.querySelectorAll("[data-action]").forEach((btn) => {
-        btn.addEventListener("click", (evt) => {
+        btn.addEventListener("click", async (evt) => {
           evt.stopPropagation();
-          handleAction(task, btn.dataset.action);
+          await handleAction(task, btn.dataset.action);
         });
       });
 
@@ -493,7 +493,7 @@
 
   async function validateDeviceInput(rawValue) {
     const trimmed = (rawValue || "").trim();
-    if (!trimmed) return { value: null };
+    if (!trimmed) return { value: null, record: null };
     await ensureDeviceOptions(trimmed);
     const match = getKnownDevices().find(
       (item) => String(item.device_id).toLowerCase() === trimmed.toLowerCase(),
@@ -502,7 +502,51 @@
       alert("设备不存在，请从下拉建议中选择已有设备");
       return { error: true };
     }
-    return { value: match.device_id };
+    return { value: match.device_id, record: match };
+  }
+
+  async function resolveDeviceRecord(deviceId) {
+    const trimmed = (deviceId || "").trim();
+    if (!trimmed) return null;
+    await ensureDeviceOptions(trimmed);
+    return (
+      getKnownDevices().find(
+        (item) => String(item.device_id).toLowerCase() === trimmed.toLowerCase(),
+      ) || null
+    );
+  }
+
+  async function updateDeviceStatus(deviceRecord, status) {
+    if (!deviceRecord?.id) return;
+    const resp = await apiFetch(`/api/devices/${deviceRecord.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || "更新设备状态失败");
+    }
+  }
+
+  async function syncDeviceBinding(nextDeviceRecord, prevDeviceId) {
+    const tasks = [];
+    if (prevDeviceId) {
+      const prevRecord = await resolveDeviceRecord(prevDeviceId);
+      if (prevRecord?.id) tasks.push(updateDeviceStatus(prevRecord, "idle"));
+    }
+    if (nextDeviceRecord?.id) {
+      tasks.push(updateDeviceStatus(nextDeviceRecord, "running"));
+    }
+    if (!tasks.length) return;
+
+    const results = await Promise.allSettled(tasks);
+    const errors = results
+      .filter((r) => r.status === "rejected")
+      .map((r) => r.reason?.message || r.reason || "未知错误");
+    if (errors.length) {
+      console.warn("同步设备状态失败", errors);
+      alert("设备状态同步失败，请检查设备池或稍后重试");
+    }
   }
 
   function logAction(task, action, detail, scope = "task") {
@@ -616,7 +660,7 @@
     saveStateAndRender();
   }
 
-  function applyEdit(task, payload) {
+  async function applyEdit(task, payload) {
     const changes = [];
     const prevDevice = task.device_id;
     if (payload.device !== undefined) {
@@ -624,6 +668,7 @@
       if (payload.device !== prevDevice) {
         changes.push(payload.device ? `绑定设备 ${payload.device}` : "解绑设备");
         logAction(task, payload.device ? "更换设备" : "解绑设备", changes.at(-1), "device");
+        await syncDeviceBinding(payload.deviceRecord, prevDevice);
       }
     }
     if (task.task_type === "score" && payload.score) {
@@ -753,7 +798,7 @@
     });
   }
 
-  function handleAction(task, action) {
+  async function handleAction(task, action) {
     const now = new Date().toISOString();
     if (action === "start-pause") {
       if (task.status === "running") {
@@ -783,10 +828,12 @@
 
     if (action === "terminate") {
       if (confirm("终止任务将释放设备，确定终止？")) {
+        const prevDevice = task.device_id;
         task.status = "terminated";
         task.group_id = taskState.groups.find((g) => g.id === "g-completed") ? "g-completed" : task.group_id;
         logAction(task, "终止任务", `终止任务「${task.name}」并释放设备 ${task.device_id || "未绑定"}`, "device");
         task.device_id = null;
+        await syncDeviceBinding(null, prevDevice);
       }
     }
 
@@ -909,6 +956,7 @@
         duration_hours: Number(document.querySelector("#task-chest-duration").value || 0),
       };
     }
+    await syncDeviceBinding(validatedDevice.record, null);
     taskState.tasks.push(newTask);
     logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
     closeModal("#task-modal");
@@ -950,6 +998,7 @@
       if (validatedDevice.error) return;
       const payload = {
         device: validatedDevice.value,
+        deviceRecord: validatedDevice.record,
         score: null,
         multiplier: null,
         chest: null,
@@ -969,7 +1018,7 @@
       if (task.task_type === "chest") {
         payload.chest = { duration_hours: Number(document.querySelector("#edit-chest-hours").value || 0) };
       }
-      applyEdit(task, payload);
+      await applyEdit(task, payload);
       closeModal("#edit-modal");
     });
     document.querySelector("#submit-move")?.addEventListener("click", () => {
