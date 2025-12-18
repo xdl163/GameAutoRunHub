@@ -312,6 +312,7 @@
       const count = taskState.tasks.filter((t) => t.group_id === group.id).length;
       const button = document.createElement("button");
       button.className = `group-item ${currentGroupId === group.id ? "active" : ""}`;
+      const allowDelete = isOwnedGroup(group) && !group.is_default;
       button.innerHTML = `
         <div>
           <strong>${group.name}</strong>
@@ -321,7 +322,7 @@
         <div class="group-actions">
           <span class="badge">${count}</span>
           <button class="ghost mini" data-manage>管理</button>
-          ${group.is_default ? "" : '<button class="ghost mini danger" data-delete>删除</button>'}
+          ${allowDelete ? '<button class="ghost mini danger" data-delete>删除</button>' : ""}
         </div>
       `;
       button.addEventListener("click", (evt) => {
@@ -334,11 +335,11 @@
         evt.stopPropagation();
         openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
       });
-      if (!group.is_default) {
+      if (allowDelete) {
         button.querySelector("[data-delete]")?.addEventListener("click", (evt) => {
           evt.stopPropagation();
           if (!confirm(`删除分组「${group.name}」，组内任务将移至「未分组」`)) return;
-          deleteGroup(group.id);
+          deleteGroup(group).catch((err) => console.warn("删除分组失败", err));
         });
       }
       list.appendChild(button);
@@ -1026,12 +1027,34 @@
     saveStateAndRender();
   }
 
-  function deleteGroup(groupId) {
-    ensureDefaultGroups();
-    const defaultGroup = taskState.groups.find((g) => g.id === "g-default" && g.is_default) || taskState.groups[0];
-    taskState.tasks = taskState.tasks.map((task) => (task.group_id === groupId ? { ...task, group_id: defaultGroup.id } : task));
-    taskState.groups = taskState.groups.filter((g) => g.id !== groupId);
-    saveStateAndRender();
+  async function deleteGroup(group) {
+    if (!group || !isOwnedGroup(group)) {
+      alert("只能删除自己创建的分组");
+      return;
+    }
+    const groupPk = Number(group.id);
+    if (!Number.isFinite(groupPk)) {
+      alert("分组标识无效，无法删除");
+      return;
+    }
+    try {
+      const resp = await apiFetch(`/api/task-groups/${groupPk}`, { method: "DELETE" });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || `删除分组失败 ${resp.status}`);
+      }
+      ensureDefaultGroups();
+      const defaultGroup = taskState.groups.find((g) => g.id === "g-default" && g.is_default) || taskState.groups[0];
+      taskState.tasks = taskState.tasks.map((task) =>
+        task.group_id === group.id ? { ...task, group_id: defaultGroup.id } : task,
+      );
+      taskState.groups = taskState.groups.filter((g) => g.id !== group.id);
+      saveStateAndRender();
+      await reloadGroupsFromServer();
+    } catch (err) {
+      console.warn("删除分组失败", err);
+      alert(err.message || "删除分组失败，请稍后重试");
+    }
   }
 
   function openModal(id) {
