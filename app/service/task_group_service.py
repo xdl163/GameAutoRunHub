@@ -12,6 +12,7 @@ from app.repository import (
     task_repository,
     user_repository,
 )
+from . import group_operation_log_service
 
 DEFAULT_GROUP_NAME = "未分组"
 COMPLETED_GROUP_NAME = "已完成"
@@ -117,6 +118,13 @@ def create_group(
         created_by=owner.id,
     )
     _attach_owner_meta(db, [created])
+    group_operation_log_service.log_action(
+        db,
+        performer=requester,
+        group_id=created.id,
+        action="create_group",
+        detail=f"创建分组「{created.name}」",
+    )
     return created
 
 
@@ -140,6 +148,13 @@ def add_managers(
             valid_ids.append(user.id)
 
     replaced = group_authorization_repository.replace_authorizations(db, group_id=group_id, user_ids=valid_ids)
+    group_operation_log_service.log_action(
+        db,
+        performer=requester,
+        group_id=group_id,
+        action="update_group",
+        detail=f"更新分组管理员，授权 {len(replaced)} 人",
+    )
     return replaced
 
 
@@ -152,10 +167,20 @@ def delete_group(db: Session, *, requester: User, group_id: int) -> TaskGroup:
     if group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权删除分组")
 
+    group_id_value = group.id
+    group_name = group.name
+
     default_group, _ = ensure_user_default_groups(db, owner=group.created_by)
     task_group_repository.move_tasks_to_group(db, source_group_id=group.id, target_group_id=default_group.id)
     group_authorization_repository.delete_by_group(db, group_id=group.id)
     task_group_repository.delete(db, group)
+    group_operation_log_service.log_action(
+        db,
+        performer=requester,
+        group_id=group_id_value,
+        action="delete_group",
+        detail=f"删除分组「{group_name}」，任务迁移至默认分组",
+    )
     return group
 
 
