@@ -27,7 +27,6 @@
           <header class="panel-header panel-actions">
             <div>
               <h2>任务管理</h2>
-              <p class="muted">分组化管理三类任务，支持跨角色查看、排序与操作日志</p>
             </div>
             <div class="row-actions">
               <button id="create-group-btn" class="ghost">新建分组</button>
@@ -65,7 +64,6 @@
                       <option value="start_time">按开始时间</option>
                     </select>
                   </div>
-                  <div class="pill-group" id="group-filter"></div>
                   <div class="pill-group" id="type-filter"></div>
                 </div>
               </div>
@@ -265,6 +263,32 @@
           </label>
           <div class="actions" style="justify-content: flex-end">
             <button id="submit-move" class="primary" type="button">确认移动</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="group-manage-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>管理分组</h3>
+          <button class="close-btn" data-close="#group-manage-modal">×</button>
+        </header>
+        <div class="modal-body form-grid">
+          <label class="field">
+            <span>分组名称</span>
+            <input type="text" id="manage-group-name" />
+          </label>
+          <label class="field">
+            <span>分组描述</span>
+            <input type="text" id="manage-group-desc" />
+          </label>
+          <label class="field">
+            <span>可访问成员（用逗号分隔用户名）</span>
+            <input type="text" id="manage-group-access" placeholder="例如：alice,bob" />
+          </label>
+          <div class="actions" style="justify-content: flex-end">
+            <button id="submit-group-manage" class="primary" type="button">保存</button>
           </div>
         </div>
       </div>

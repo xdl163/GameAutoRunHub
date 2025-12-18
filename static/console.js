@@ -51,6 +51,7 @@ const STORAGE_KEYS = {
 
 const DEFAULT_TASK_GROUPS = [
   { id: "g-default", name: "未分组", description: "默认分组，删除分组后任务归档于此", is_default: true, owner: "ops01" },
+  { id: "g-completed", name: "已完成", description: "终止/完成任务归档区", is_default: true, owner: "ops01" },
   { id: "g-score", name: "灵光积分组", description: "负责积分类任务", is_default: false, owner: "ops01" },
   { id: "g-multiplier", name: "挂机倍率组", description: "倍率调度", is_default: false, owner: "qa02" },
   { id: "g-chest", name: "宝箱收集组", description: "宝箱收集专项", is_default: false, owner: "ops01" },

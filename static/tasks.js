@@ -49,23 +49,27 @@
     return `${m}分钟`;
   }
 
-  function ensureDefaultGroup() {
-    const hasDefault = taskState.groups.some((g) => g.is_default);
-    if (!hasDefault) {
-      taskState.groups.unshift({
-        id: "g-default",
-        name: "未分组",
-        description: "默认分组，删除分组时任务会回收至此",
-        is_default: true,
-        owner: currentUser?.username || "system",
-      });
-    }
+  function ensureDefaultGroups() {
+    const defaults = [
+      { id: "g-default", name: "未分组", description: "默认分组，删除分组时任务会回收至此" },
+      { id: "g-completed", name: "已完成", description: "终止/完成任务归档区" },
+    ];
+    defaults.forEach((item) => {
+      const exists = taskState.groups.some((g) => g.id === item.id);
+      if (!exists) {
+        taskState.groups.unshift({
+          ...item,
+          is_default: true,
+          owner: currentUser?.username || "system",
+          accessors: [],
+        });
+      }
+    });
   }
 
   function saveStateAndRender() {
     saveTaskState(taskState);
     renderGroups();
-    renderGroupFilter();
     renderOwnerFilter();
     renderTypeFilter();
     renderTasks();
@@ -113,7 +117,7 @@
   }
 
   function renderGroups() {
-    ensureDefaultGroup();
+    ensureDefaultGroups();
     const list = document.querySelector("#group-list");
     if (!list) return;
     const groups = taskState.groups || [];
@@ -122,7 +126,6 @@
     allBtn.innerHTML = `<div><strong>全部任务</strong><p class="muted">查看所有分组</p></div><span class="badge">${taskState.tasks.length}</span>`;
     allBtn.addEventListener("click", () => {
       currentGroupId = "all";
-      renderGroupFilter();
       renderTasks();
     });
     list.innerHTML = "";
@@ -140,14 +143,18 @@
         </div>
         <div class="group-actions">
           <span class="badge">${count}</span>
+          <button class="ghost mini" data-manage>管理</button>
           ${group.is_default ? "" : '<button class="ghost mini danger" data-delete>删除</button>'}
         </div>
       `;
       button.addEventListener("click", (evt) => {
-        if (evt.target?.dataset?.delete !== undefined) return;
+        if (evt.target?.dataset?.delete !== undefined || evt.target?.dataset?.manage !== undefined) return;
         currentGroupId = group.id;
-        renderGroupFilter();
         renderTasks();
+      });
+      button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        openGroupManageModal(group);
       });
       if (!group.is_default) {
         button.querySelector("[data-delete]")?.addEventListener("click", (evt) => {
@@ -157,27 +164,6 @@
         });
       }
       list.appendChild(button);
-    });
-  }
-
-  function renderGroupFilter() {
-    const wrapper = document.querySelector("#group-filter");
-    if (!wrapper) return;
-    wrapper.innerHTML = "";
-    const createPill = (id, label) => {
-      const pill = document.createElement("button");
-      pill.className = `pill ${currentGroupId === id ? "active" : ""}`;
-      pill.textContent = label;
-      pill.addEventListener("click", () => {
-        currentGroupId = id;
-        renderGroups();
-        renderTasks();
-      });
-      return pill;
-    };
-    wrapper.appendChild(createPill("all", "全部任务"));
-    taskState.groups.forEach((g) => {
-      wrapper.appendChild(createPill(g.id, g.name));
     });
   }
 
@@ -229,6 +215,11 @@
 
   function sortTasks(tasks) {
     const copied = [...tasks];
+    copied.sort((a, b) => {
+      if (a.status === "terminated" && b.status !== "terminated") return 1;
+      if (a.status !== "terminated" && b.status === "terminated") return -1;
+      return 0;
+    });
     switch (currentSort) {
       case "status":
         return copied.sort((a, b) => (a.status || "").localeCompare(b.status || ""));
@@ -257,6 +248,7 @@
   }
 
   function deviceLine(task) {
+    if (task.status === "terminated") return "";
     return task.device_id ? `<span class="badge subtle">设备：${task.device_id}</span>` : `<span class="badge warning">待绑定设备</span>`;
   }
 
@@ -563,6 +555,7 @@
     if (action === "terminate") {
       if (confirm("终止任务将释放设备，确定终止？")) {
         task.status = "terminated";
+        task.group_id = taskState.groups.find((g) => g.id === "g-completed") ? "g-completed" : task.group_id;
         logAction(task, "终止任务", `终止任务「${task.name}」并释放设备 ${task.device_id || "未绑定"}`, "device");
         task.device_id = null;
       }
@@ -790,7 +783,6 @@
     toggleOwnerFields();
     renderOwnerFilter();
     renderGroups();
-    renderGroupFilter();
     renderTypeFilter();
     renderTasks();
     setCreateTypeButtons(createTaskType);
