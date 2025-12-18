@@ -80,10 +80,10 @@
   }
 
   async function loadDeviceOptions(keyword = "") {
-    const key = keyword.trim().toLowerCase();
+    const key = `${keyword.trim().toLowerCase()}|idle`;
     let list = [];
     try {
-      const query = key ? `?q=${encodeURIComponent(key)}` : "";
+      const query = keyword ? `?q=${encodeURIComponent(keyword)}&idle_only=true` : "?idle_only=true";
       const resp = await apiFetch(`/api/devices/options${query}`);
       if (!resp.ok) throw new Error(`加载设备失败 ${resp.status}`);
       list = await resp.json();
@@ -496,7 +496,7 @@
     return Array.from(seen.values());
   }
 
-  async function validateDeviceInput(rawValue, { allowEmpty = true } = {}) {
+  async function validateDeviceInput(rawValue, { allowEmpty = true, currentDeviceId = null } = {}) {
     const trimmed = (rawValue || "").trim();
     if (!trimmed) {
       if (!allowEmpty) {
@@ -511,6 +511,10 @@
     );
     if (!match) {
       alert("设备不存在，请从下拉建议中选择已有设备");
+      return { error: true };
+    }
+    if (match.status && match.status !== "idle" && String(currentDeviceId || "").toLowerCase() !== trimmed.toLowerCase()) {
+      alert("设备当前不可用，请选择空闲设备");
       return { error: true };
     }
     return { value: match.device_id, record: match };
@@ -1042,7 +1046,9 @@
     document.querySelector("#submit-edit")?.addEventListener("click", async () => {
       const task = getSelectedTask();
       if (!task) return;
-      const validatedDevice = await validateDeviceInput(document.querySelector("#edit-device").value);
+      const validatedDevice = await validateDeviceInput(document.querySelector("#edit-device").value, {
+        currentDeviceId: task.device_id,
+      });
       if (validatedDevice.error) return;
       const payload = {
         device: validatedDevice.value,

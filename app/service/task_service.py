@@ -71,10 +71,13 @@ def _update_device_binding(
             )
         return task
 
+    if prev_device and prev_device.id == device_id:
+        return task
+
     new_device = device_repository.get_by_id(db, device_id)
     if not new_device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
-    if (not prev_device or new_device.id != prev_device.id) and new_device.status != DeviceStatusEnum.IDLE:
+    if new_device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     new_device.status = DeviceStatusEnum.RUNNING
     device_repository.save(db, new_device)
