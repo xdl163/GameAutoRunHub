@@ -5,7 +5,9 @@
   let currentGroupId = "all";
   let currentSort = "updated_desc";
   let currentOwner = "all";
+  let currentType = "all";
   let currentUser = null;
+  let selectedTaskId = null;
   let currentType = "all";
 
   const StatusLabels = {
@@ -28,6 +30,8 @@
     { id: "multiplier", label: "挂机倍率" },
     { id: "chest", label: "宝箱" },
   ];
+
+  let createTaskType = "score";
 
   function fmtDate(iso) {
     if (!iso) return "-";
@@ -263,8 +267,6 @@
         <button class="ghost mini" data-action="patch">${task.task_type === "score" ? "补暂停/积分" : "补暂停"}</button>
         <button class="ghost mini" data-action="edit">修改</button>
         <button class="ghost mini" data-action="move">移动分组</button>
-        <button class="ghost mini" data-action="swap-device">更换设备</button>
-        <button class="ghost mini" data-action="unbind-device">解绑设备</button>
         <button class="ghost mini danger" data-action="terminate">终止</button>
       </div>
     `;
@@ -354,6 +356,41 @@
     return taskState.groups.find((g) => g.id === id)?.name || "未知分组";
   }
 
+  function getDeviceCandidates() {
+    const unique = new Set(taskState.tasks.map((t) => t.device_id).filter(Boolean));
+    return Array.from(unique);
+  }
+
+  function bindSuggest(inputSelector, listSelector) {
+    const input = document.querySelector(inputSelector);
+    const list = document.querySelector(listSelector);
+    if (!input || !list) return;
+    const render = () => {
+      const keyword = input.value.trim();
+      const candidates = getDeviceCandidates().filter((id) => id.toLowerCase().includes(keyword.toLowerCase()));
+      if (!keyword || !candidates.length) {
+        list.classList.remove("active");
+        list.innerHTML = "";
+        return;
+      }
+      list.innerHTML = candidates
+        .slice(0, 8)
+        .map((id) => `<div class="suggestion-item" data-id="${id}">${id}</div>`)
+        .join("");
+      list.classList.add("active");
+    };
+    input.addEventListener("input", render);
+    input.addEventListener("focus", render);
+    input.addEventListener("blur", () => setTimeout(() => list.classList.remove("active"), 150));
+    list.addEventListener("click", (evt) => {
+      const id = evt.target?.dataset?.id;
+      if (id) {
+        input.value = id;
+        list.classList.remove("active");
+      }
+    });
+  }
+
   function logAction(task, action, detail, scope = "task") {
     const entry = {
       id: Date.now(),
@@ -366,6 +403,133 @@
     };
     appendTaskLog(entry);
     taskState.logs.push(entry);
+  }
+
+  function setSelectedTask(task) {
+    selectedTaskId = task?.id ?? null;
+    return selectedTaskId;
+  }
+
+  function getSelectedTask() {
+    return taskState.tasks.find((t) => t.id === selectedTaskId);
+  }
+
+  function openPatchModal(task) {
+    setSelectedTask(task);
+    document.querySelector("#patch-task-name").textContent = `当前任务：${task.name}`;
+    document.querySelector("#patch-points").value = "";
+    document.querySelector("#patch-hours").value = "";
+    document.querySelector("#patch-points-field").style.display = task.task_type === "score" ? "block" : "none";
+    openModal("#patch-modal");
+  }
+
+  function openEditModal(task) {
+    setSelectedTask(task);
+    document.querySelector("#edit-task-name").textContent = `当前任务：${task.name}`;
+    document.querySelector("#edit-device").value = task.device_id || "";
+    updateTypeSections("#edit-modal", task.task_type);
+    if (task.task_type === "score") {
+      document.querySelector("#edit-score-target").value = task.score?.target_points || 0;
+      document.querySelector("#edit-score-rate").value = task.score?.point_rate || 7000;
+    }
+    if (task.task_type === "multiplier") {
+      document.querySelector("#edit-multiplier-hours").value = task.multiplier?.duration_hours || 0;
+      document.querySelector("#edit-multiplier-current").value = task.multiplier?.current_multiplier || 1.0;
+    }
+    if (task.task_type === "chest") {
+      document.querySelector("#edit-chest-hours").value = task.chest?.duration_hours || 0;
+    }
+    openModal("#edit-modal");
+  }
+
+  function openMoveModal(task) {
+    setSelectedTask(task);
+    const select = document.querySelector("#move-group-select");
+    document.querySelector("#move-task-name").textContent = `当前任务：${task.name}`;
+    if (select) {
+      select.innerHTML = taskState.groups
+        .map((g) => `<option value="${g.id}" ${g.id === task.group_id ? "selected" : ""}>${g.name}</option>`)
+        .join("");
+    }
+    openModal("#move-modal");
+  }
+
+  function applyPatch(task, addPoints, addHours) {
+    if (!(addPoints > 0) && !(addHours > 0)) return;
+    const detailMsg = [];
+    if (task.task_type === "score" && addPoints > 0) {
+      task.score = task.score || {};
+      task.score.current_points = Number(task.score.current_points || 0) + addPoints;
+      detailMsg.push(`补充积分 ${addPoints}`);
+    }
+    if (addHours > 0) {
+      if (task.task_type === "multiplier") {
+        task.multiplier = task.multiplier || {};
+        task.multiplier.duration_hours = Number(task.multiplier.duration_hours || 0) + addHours;
+      }
+      if (task.task_type === "chest") {
+        task.chest = task.chest || {};
+        task.chest.duration_hours = Number(task.chest.duration_hours || 0) + addHours;
+      }
+      detailMsg.push(`补充时长 ${addHours} 小时`);
+    }
+    if (detailMsg.length) {
+      logAction(task, "补暂停", detailMsg.join("；"));
+    }
+    task.updated_at = new Date().toISOString();
+    saveStateAndRender();
+  }
+
+  function applyEdit(task, payload) {
+    const changes = [];
+    const prevDevice = task.device_id;
+    if (payload.device !== undefined) {
+      task.device_id = payload.device || null;
+      if (payload.device !== prevDevice) {
+        changes.push(payload.device ? `绑定设备 ${payload.device}` : "解绑设备");
+        logAction(task, payload.device ? "更换设备" : "解绑设备", changes.at(-1), "device");
+      }
+    }
+    if (task.task_type === "score" && payload.score) {
+      if (payload.score.target_points !== undefined) {
+        task.score.target_points = payload.score.target_points;
+        changes.push(`目标积分调整为 ${payload.score.target_points}`);
+      }
+      if (payload.score.point_rate !== undefined) {
+        task.score.point_rate = payload.score.point_rate;
+        changes.push(`积分速率调整为 ${payload.score.point_rate}`);
+      }
+    }
+    if (task.task_type === "multiplier" && payload.multiplier) {
+      if (payload.multiplier.duration_hours !== undefined) {
+        task.multiplier.duration_hours = payload.multiplier.duration_hours;
+        changes.push(`时长调整为 ${payload.multiplier.duration_hours} 小时`);
+      }
+      if (payload.multiplier.current_multiplier !== undefined) {
+        task.multiplier.current_multiplier = payload.multiplier.current_multiplier;
+        changes.push(`当前倍率调整为 ${payload.multiplier.current_multiplier}`);
+      }
+    }
+    if (task.task_type === "chest" && payload.chest) {
+      if (payload.chest.duration_hours !== undefined) {
+        task.chest.duration_hours = payload.chest.duration_hours;
+        changes.push(`时长调整为 ${payload.chest.duration_hours} 小时`);
+      }
+    }
+    if (changes.length) {
+      logAction(task, "修改", changes.join("；"));
+    }
+    task.updated_at = new Date().toISOString();
+    saveStateAndRender();
+  }
+
+  function applyMove(task, targetGroupId) {
+    const target = taskState.groups.find((g) => g.id === targetGroupId);
+    if (!target) return;
+    task.group_id = targetGroupId;
+    logAction(task, "移动分组", `移动至分组「${target.name}」`);
+    task.updated_at = new Date().toISOString();
+    saveStateAndRender();
   }
 
   function handleAction(task, action) {
@@ -382,81 +546,18 @@
     }
 
     if (action === "patch") {
-      if (task.task_type === "score") {
-        const addPoints = Number(prompt("补暂停：输入积分，加分将换算剩余时间", "10000") || 0);
-        if (Number.isFinite(addPoints) && addPoints > 0) {
-          task.score = task.score || {};
-          task.score.current_points = Number(task.score.current_points || 0) + addPoints;
-          logAction(task, "补暂停", `补充积分 ${addPoints}`);
-        }
-      } else {
-        const addHours = Number(prompt("补暂停：输入补充时长（小时）", "1") || 0);
-        if (Number.isFinite(addHours) && addHours > 0) {
-          if (task.task_type === "multiplier") {
-            task.multiplier = task.multiplier || {};
-            task.multiplier.duration_hours = Number(task.multiplier.duration_hours || 0) + addHours;
-          }
-          if (task.task_type === "chest") {
-            task.chest = task.chest || {};
-            task.chest.duration_hours = Number(task.chest.duration_hours || 0) + addHours;
-          }
-          logAction(task, "补暂停", `补充时长 ${addHours} 小时`);
-        }
-      }
+      openPatchModal(task);
+      return;
     }
 
     if (action === "edit") {
-      if (task.task_type === "score") {
-        const newTarget = Number(prompt("修改目标积分（不影响进度）", task.score?.target_points || 360000) || 0);
-        if (newTarget > 0) {
-          task.score = task.score || {};
-          task.score.target_points = newTarget;
-          logAction(task, "修改", `更新目标积分至 ${newTarget}`);
-        }
-      }
-      if (task.task_type === "multiplier") {
-        const addHours = Number(prompt("追加时长（小时）", "12") || 0);
-        if (addHours > 0) {
-          task.multiplier = task.multiplier || {};
-          task.multiplier.duration_hours = Number(task.multiplier.duration_hours || 0) + addHours;
-          logAction(task, "修改", `追加 ${addHours} 小时`);
-        }
-      }
-      if (task.task_type === "chest") {
-        const addHours = Number(prompt("追加时长（小时）", "12") || 0);
-        if (addHours > 0) {
-          task.chest = task.chest || {};
-          task.chest.duration_hours = Number(task.chest.duration_hours || 0) + addHours;
-          logAction(task, "修改", `追加 ${addHours} 小时`);
-        }
-      }
+      openEditModal(task);
+      return;
     }
 
     if (action === "move") {
-      const target = prompt("输入目标分组名称或ID", getGroupName(task.group_id));
-      if (!target) return;
-      const group = taskState.groups.find((g) => g.id === target || g.name === target);
-      if (!group) {
-        alert("未找到目标分组");
-      } else {
-        task.group_id = group.id;
-        logAction(task, "移动分组", `移动至分组「${group.name}」`);
-      }
-    }
-
-    if (action === "swap-device") {
-      const newDevice = prompt("更换设备：输入新的设备ID", task.device_id || "");
-      if (newDevice) {
-        task.device_id = newDevice;
-        logAction(task, "更换设备", `任务绑定设备切换为 ${newDevice}`, "device");
-      }
-    }
-
-    if (action === "unbind-device") {
-      if (confirm("解绑设备将记录设备池操作日志，确认解绑？")) {
-        logAction(task, "解绑设备", `任务解绑设备 ${task.device_id || "未绑定"}`, "device");
-        task.device_id = null;
-      }
+      openMoveModal(task);
+      return;
     }
 
     if (action === "terminate") {
@@ -495,6 +596,7 @@
   }
 
   function resetTaskForm() {
+    createTaskType = "score";
     document.querySelector("#task-name").value = "";
     document.querySelector("#task-device").value = "";
     document.querySelector("#task-score-current").value = 0;
@@ -504,20 +606,28 @@
     document.querySelector("#task-multiplier-current").value = 1.0;
     document.querySelector("#task-chest-duration").value = 12;
     document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
+    updateTypeSections("#task-modal", createTaskType);
+    setCreateTypeButtons(createTaskType);
   }
 
-  function updateTaskTypeSections() {
-    const type = document.querySelector("#task-type").value;
-    document.querySelectorAll(".type-section").forEach((section) => {
+  function updateTypeSections(containerSelector, type) {
+    document.querySelectorAll(`${containerSelector} .type-section`).forEach((section) => {
       section.style.display = section.dataset.type === type ? "block" : "none";
     });
   }
 
   function populateGroupSelects() {
     const select = document.querySelector("#task-group");
+    if (!select) return;
     select.innerHTML = taskState.groups
       .map((g) => `<option value="${g.id}">${g.name}</option>`)
       .join("");
+  }
+
+  function setCreateTypeButtons(type) {
+    document.querySelectorAll("#task-type-buttons .pill").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.type === type);
+    });
   }
 
   function createGroup() {
@@ -542,7 +652,7 @@
 
   function createTask() {
     const name = document.querySelector("#task-name").value.trim();
-    const type = document.querySelector("#task-type").value;
+    const type = createTaskType;
     const groupId = document.querySelector("#task-group").value;
     const device = document.querySelector("#task-device").value.trim();
     const owner = document.querySelector("#task-owner").value.trim() || currentUser.username;
@@ -602,13 +712,62 @@
     document.querySelector("#create-task-btn")?.addEventListener("click", () => {
       populateGroupSelects();
       resetTaskForm();
-      updateTaskTypeSections();
       document.querySelector("#task-owner").value = currentUser.username;
       openModal("#task-modal");
     });
     document.querySelector("#submit-group")?.addEventListener("click", createGroup);
     document.querySelector("#submit-task")?.addEventListener("click", createTask);
-    document.querySelector("#task-type")?.addEventListener("change", updateTaskTypeSections);
+    document.querySelectorAll("#task-type-buttons .pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        createTaskType = btn.dataset.type;
+        setCreateTypeButtons(createTaskType);
+        updateTypeSections("#task-modal", createTaskType);
+      });
+    });
+    document.querySelector("#submit-patch")?.addEventListener("click", () => {
+      const task = getSelectedTask();
+      if (!task) return;
+      const addPoints = Number(document.querySelector("#patch-points").value || 0);
+      const addHours = Number(document.querySelector("#patch-hours").value || 0);
+      applyPatch(task, addPoints, addHours);
+      closeModal("#patch-modal");
+    });
+    document.querySelector("#submit-edit")?.addEventListener("click", () => {
+      const task = getSelectedTask();
+      if (!task) return;
+      const payload = {
+        device: document.querySelector("#edit-device").value.trim(),
+        score: null,
+        multiplier: null,
+        chest: null,
+      };
+      if (task.task_type === "score") {
+        payload.score = {
+          target_points: Number(document.querySelector("#edit-score-target").value || 0),
+          point_rate: Number(document.querySelector("#edit-score-rate").value || 0),
+        };
+      }
+      if (task.task_type === "multiplier") {
+        payload.multiplier = {
+          duration_hours: Number(document.querySelector("#edit-multiplier-hours").value || 0),
+          current_multiplier: Number(document.querySelector("#edit-multiplier-current").value || 0),
+        };
+      }
+      if (task.task_type === "chest") {
+        payload.chest = { duration_hours: Number(document.querySelector("#edit-chest-hours").value || 0) };
+      }
+      applyEdit(task, payload);
+      closeModal("#edit-modal");
+    });
+    document.querySelector("#submit-move")?.addEventListener("click", () => {
+      const task = getSelectedTask();
+      if (!task) return;
+      const target = document.querySelector("#move-group-select")?.value;
+      if (target) {
+        applyMove(task, target);
+      }
+      closeModal("#move-modal");
+    });
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
       renderTasks();
@@ -619,6 +778,8 @@
       renderTasks();
     });
     bindModalClose();
+    bindSuggest("#task-device", "#task-device-suggest");
+    bindSuggest("#edit-device", "#edit-device-suggest");
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -630,8 +791,10 @@
     renderOwnerFilter();
     renderGroups();
     renderGroupFilter();
+    renderTypeFilter();
     renderTasks();
-    updateTaskTypeSections();
+    setCreateTypeButtons(createTaskType);
+    updateTypeSections("#task-modal", createTaskType);
     bindEvents();
   });
 })();

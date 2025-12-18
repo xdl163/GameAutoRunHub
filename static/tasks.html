@@ -114,14 +114,14 @@
             <span>任务名称</span>
             <input type="text" id="task-name" placeholder="示例：晨跑灵光积分" />
           </label>
-          <label class="field">
+          <div class="field">
             <span>任务类型</span>
-            <select id="task-type">
-              <option value="score">灵光积分</option>
-              <option value="multiplier">挂机倍率</option>
-              <option value="chest">宝箱</option>
-            </select>
-          </label>
+            <div class="pill-group type-toggle" id="task-type-buttons">
+              <button type="button" class="pill" data-type="score">灵光积分</button>
+              <button type="button" class="pill" data-type="multiplier">挂机倍率</button>
+              <button type="button" class="pill" data-type="chest">宝箱</button>
+            </div>
+          </div>
           <label class="field">
             <span>所属分组</span>
             <select id="task-group"></select>
@@ -132,7 +132,8 @@
           </label>
           <label class="field">
             <span>绑定设备</span>
-            <input type="text" id="task-device" placeholder="设备ID，可空表示待绑定" />
+            <input type="text" id="task-device" placeholder="设备ID，可空表示待绑定" autocomplete="off" />
+            <div id="task-device-suggest" class="suggestion-list"></div>
           </label>
           <label class="field">
             <span>开始时间</span>
@@ -174,6 +175,96 @@
           </div>
           <div class="actions" style="justify-content: flex-end">
             <button id="submit-task" class="primary" type="button">创建任务</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="patch-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>补暂停 / 补积分</h3>
+          <button class="close-btn" data-close="#patch-modal">×</button>
+        </header>
+        <div class="modal-body form-grid">
+          <p class="muted" id="patch-task-name"></p>
+          <div class="field" id="patch-points-field">
+            <span>积分（仅灵光积分）</span>
+            <input type="number" id="patch-points" placeholder="输入积分" />
+          </div>
+          <div class="field">
+            <span>补充时长（小时）</span>
+            <input type="number" id="patch-hours" placeholder="输入小时数" />
+          </div>
+          <div class="actions" style="justify-content: flex-end">
+            <button id="submit-patch" class="primary" type="button">提交</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="edit-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>修改任务</h3>
+          <button class="close-btn" data-close="#edit-modal">×</button>
+        </header>
+        <div class="modal-body form-grid">
+          <p class="muted" id="edit-task-name"></p>
+          <div class="field">
+            <span>绑定设备</span>
+            <input type="text" id="edit-device" placeholder="设备ID，可空表示待绑定" autocomplete="off" />
+            <div id="edit-device-suggest" class="suggestion-list"></div>
+          </div>
+          <div class="type-section" data-type="score">
+            <div class="two-columns">
+              <label class="field">
+                <span>目标积分</span>
+                <input type="number" id="edit-score-target" />
+              </label>
+              <label class="field">
+                <span>积分速率</span>
+                <input type="number" id="edit-score-rate" />
+              </label>
+            </div>
+          </div>
+          <div class="type-section" data-type="multiplier">
+            <label class="field">
+              <span>时长（小时）</span>
+              <input type="number" id="edit-multiplier-hours" />
+            </label>
+            <label class="field">
+              <span>当前倍率</span>
+              <input type="number" step="0.1" id="edit-multiplier-current" />
+            </label>
+          </div>
+          <div class="type-section" data-type="chest">
+            <label class="field">
+              <span>时长（小时）</span>
+              <input type="number" id="edit-chest-hours" />
+            </label>
+          </div>
+          <div class="actions" style="justify-content: flex-end">
+            <button id="submit-edit" class="primary" type="button">保存修改</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="move-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>移动任务分组</h3>
+          <button class="close-btn" data-close="#move-modal">×</button>
+        </header>
+        <div class="modal-body form-grid">
+          <p class="muted" id="move-task-name"></p>
+          <label class="field">
+            <span>目标分组</span>
+            <select id="move-group-select"></select>
+          </label>
+          <div class="actions" style="justify-content: flex-end">
+            <button id="submit-move" class="primary" type="button">确认移动</button>
           </div>
         </div>
       </div>
