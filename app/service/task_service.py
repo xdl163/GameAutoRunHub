@@ -75,6 +75,8 @@ def _update_device_binding(
     new_device = device_repository.get_by_id(db, device_id)
     if not new_device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+    if new_device.created_by != performer.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权绑定该设备")
     if new_device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     new_device.status = DeviceStatusEnum.RUNNING
@@ -120,6 +122,8 @@ def create_task(
     device = device_repository.get_by_id(db, device_id)
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+    if device.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权绑定该设备")
     if device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     settings = config.get_settings()

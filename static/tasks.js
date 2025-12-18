@@ -673,24 +673,8 @@
   }
 
   async function syncDeviceBinding(nextDeviceRecord, prevDeviceId) {
-    const tasks = [];
-    if (prevDeviceId) {
-      const prevRecord = await resolveDeviceRecord(prevDeviceId);
-      if (prevRecord?.id) tasks.push(updateDeviceStatus(prevRecord, "idle"));
-    }
-    if (nextDeviceRecord?.id) {
-      tasks.push(updateDeviceStatus(nextDeviceRecord, "running"));
-    }
-    if (!tasks.length) return;
-
-    const results = await Promise.allSettled(tasks);
-    const errors = results
-      .filter((r) => r.status === "rejected")
-      .map((r) => r.reason?.message || r.reason || "未知错误");
-    if (errors.length) {
-      console.warn("同步设备状态失败", errors);
-      alert("设备状态同步失败，请检查设备池或稍后重试");
-    }
+    // 设备状态由后端在绑定/解绑时统一维护，这里避免再次触发需要管理权限的设备状态更新
+    return { nextDeviceRecord, prevDeviceId };
   }
 
   function logAction(task, action, detail, scope = "task") {
