@@ -305,7 +305,7 @@
     allBtn.innerHTML = `<div><strong>全部任务</strong><p class="muted">查看所有分组</p></div><span class="badge">${taskState.tasks.length}</span>`;
     allBtn.addEventListener("click", () => {
       currentGroupId = "all";
-      renderTasks();
+      loadTasksFromServer("all");
     });
     list.innerHTML = "";
     list.appendChild(allBtn);
@@ -331,7 +331,7 @@
         if (evt.target?.dataset?.delete !== undefined || evt.target?.dataset?.manage !== undefined) return;
         currentGroupId = group.id;
         renderGroups();
-        renderTasks();
+        loadTasksFromServer(group.id);
       });
       button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
         evt.stopPropagation();
@@ -479,6 +479,23 @@
       tasks = tasks.filter((t) => t.owner === currentOwner);
     }
     return sortTasks(tasks);
+  }
+
+  async function loadTasksFromServer(groupId = currentGroupId) {
+    try {
+      const params = new URLSearchParams();
+      if (groupId && groupId !== "all") params.append("group_id", groupId);
+      const resp = await apiFetch(`/api/tasks${params.toString() ? `?${params.toString()}` : ""}`);
+      if (!resp.ok) throw new Error(`加载任务失败 ${resp.status}`);
+      const data = await resp.json();
+      taskState.tasks = (data || []).map((task) => normalizeApiTask(task)).filter(Boolean);
+      saveTaskState(taskState);
+      renderTasks();
+      renderGroups();
+    } catch (err) {
+      console.warn("从服务端加载任务失败", err);
+      alert(err.message || "加载任务失败，请稍后重试");
+    }
   }
 
   function deviceLine(task) {
@@ -1363,6 +1380,7 @@
     await ensureUserOptionsLoaded();
     await ensureDeviceOptions("");
     await reloadGroupsFromServer();
+    await loadTasksFromServer("all");
     populateGroupSelects();
     renderOwnerFilter();
     renderStatusFilter();
