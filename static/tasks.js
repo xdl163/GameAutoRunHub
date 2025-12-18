@@ -352,7 +352,7 @@
         </div>
         <div class="group-actions">
           <span class="badge">${count}</span>
-          <button class="ghost mini" data-manage>管理</button>
+          ${isOwnedGroup(group) ? '<button class="ghost mini" data-manage>管理</button>' : ""}
           ${allowDelete ? '<button class="ghost mini danger" data-delete>删除</button>' : ""}
         </div>
       `;
@@ -362,10 +362,12 @@
         renderGroups();
         loadTasksFromServer(group.id);
       });
-      button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
-        evt.stopPropagation();
-        openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
-      });
+      if (isOwnedGroup(group)) {
+        button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
+        });
+      }
       if (allowDelete) {
         button.querySelector("[data-delete]")?.addEventListener("click", (evt) => {
           evt.stopPropagation();
