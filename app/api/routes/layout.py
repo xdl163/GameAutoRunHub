@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends
@@ -52,9 +52,10 @@ async def get_menus(current=Depends(get_current_user)) -> Dict[str, List[Dict]]:
 
         sidebar.append({"key": "system", "label": "系统配置", "children": system_children})
 
+    cn_tz = timezone(timedelta(hours=8))
     topbar = {
         "current_user": {"username": user.username, "role": user.role},
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(cn_tz).isoformat(),
         "actions": ["修改密码", "退出登录"],
     }
 

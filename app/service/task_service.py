@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from fastapi import HTTPException, status
@@ -22,6 +22,8 @@ from app.models import (
 from app.core import config
 from app.repository import device_repository, task_group_repository, task_repository
 from app.service import device_operation_log_service, task_group_service, task_log_service
+
+CN_TZ = timezone(timedelta(hours=8))
 
 
 class TaskPermission:
@@ -54,7 +56,7 @@ def _generate_task_name(task_type: TaskTypeEnum) -> str:
         TaskTypeEnum.CHEST: "宝箱",
     }
     prefix = prefix_map.get(task_type, "任务")
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(CN_TZ).strftime("%Y%m%d%H%M%S")
     suffix = secrets.token_hex(2)
     return f"{prefix}任务-{timestamp}-{suffix}"
 
@@ -150,7 +152,7 @@ def create_task(
     if device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     settings = config.get_settings()
-    start_at = start_time or datetime.now(timezone.utc)
+    start_at = start_time or datetime.now(CN_TZ)
     task = task_repository.create_task(
         db,
         name=final_name,
@@ -245,7 +247,7 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     TaskPermission.ensure_can_manage_task(requester, task, accessible)
 
     _validate_transition(task, action)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(CN_TZ)
 
     group = task_group_repository.get_by_id(db, task.group_id)
     if not group:
