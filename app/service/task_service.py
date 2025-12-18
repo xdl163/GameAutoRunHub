@@ -241,9 +241,8 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     if action == "terminate":
         task.status = TaskStatusEnum.TERMINATED
         task.end_time = now
-        if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
-            _, completed_group = task_group_service.ensure_user_default_groups(db, owner=group.created_by)
-            task.group_id = completed_group.id
+        _, completed_group = task_group_service.ensure_user_default_groups(db, owner=group.created_by)
+        task.group_id = completed_group.id
         _update_device_binding(db, performer=requester, task=task, device_id=None, action="unbind_task")
 
     saved = task_repository.save(db, task)

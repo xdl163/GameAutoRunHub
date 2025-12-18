@@ -528,13 +528,22 @@
     return task.device_id ? `<span class="badge subtle">设备：${task.device_id}</span>` : `<span class="badge warning">待绑定设备</span>`;
   }
 
+  function getGroupById(id) {
+    return taskState.groups.find((g) => g.id === id);
+  }
+
+  function canEditTask(task) {
+    const group = getGroupById(task.group_id);
+    return isOwnedGroup(group);
+  }
+
   function renderTaskFooter(task) {
+    const editable = canEditTask(task);
     return `
       <div class="task-actions">
         <button class="ghost mini" data-action="start-pause">${task.status === "running" ? "暂停" : "开始"}</button>
         <button class="ghost mini" data-action="patch">${task.task_type === "score" ? "补暂停/积分" : "补暂停"}</button>
-        <button class="ghost mini" data-action="edit">修改</button>
-        <button class="ghost mini" data-action="move">移动分组</button>
+        ${editable ? '<button class="ghost mini" data-action="edit">修改</button>' : ""}
         <button class="ghost mini danger" data-action="terminate">终止</button>
       </div>
     `;
@@ -805,6 +814,7 @@
     setSelectedTask(task);
     document.querySelector("#edit-task-name").textContent = `当前任务：${task.name}`;
     document.querySelector("#edit-device").value = task.device_id || "";
+    populateEditGroupSelect(task);
     updateTypeSections("#edit-modal", task.task_type);
     if (task.task_type === "score") {
       document.querySelector("#edit-score-target").value = task.score?.target_points || 0;
@@ -819,18 +829,6 @@
       document.querySelector("#edit-chest-hours").value = task.chest?.duration_hours || 0;
     }
     openModal("#edit-modal");
-  }
-
-  function openMoveModal(task) {
-    setSelectedTask(task);
-    const select = document.querySelector("#move-group-select");
-    document.querySelector("#move-task-name").textContent = `当前任务：${task.name}`;
-    if (select) {
-      select.innerHTML = ownedGroups()
-        .map((g) => `<option value="${g.id}" ${g.id === task.group_id ? "selected" : ""}>${g.name}</option>`)
-        .join("");
-    }
-    openModal("#move-modal");
   }
 
   async function openGroupManageModal(group) {
@@ -880,6 +878,12 @@
     const hasDetailPayload = Object.values(detailPayload).some((v) => v !== undefined && v !== null);
     if (hasDetailPayload) {
       requests.push(requestAndUpdateTask(`/api/tasks/${task.id}/detail`, { body: detailPayload }));
+    }
+
+    if (payload.target_group_id && String(payload.target_group_id) !== String(task.group_id)) {
+      requests.push(
+        requestAndUpdateTask(`/api/tasks/${task.id}/group`, { body: { target_group_id: Number(payload.target_group_id) } }),
+      );
     }
 
     if (!requests.length) return;
@@ -1101,6 +1105,14 @@
     select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
   }
 
+  function populateEditGroupSelect(task) {
+    const select = document.querySelector("#edit-group");
+    if (!select) return;
+    const options = ownedGroups().filter((g) => !isCompletedGroup(g));
+    select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
+    select.value = task.group_id;
+  }
+
   function setCreateTypeButtons(type) {
     document.querySelectorAll("#task-type-buttons .pill").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.type === type);
@@ -1272,6 +1284,7 @@
       const payload = {
         device: validatedDevice.value,
         deviceRecord: validatedDevice.record,
+        target_group_id: document.querySelector("#edit-group")?.value || null,
         score: null,
         multiplier: null,
         chest: null,
@@ -1294,15 +1307,6 @@
       }
       await applyEdit(task, payload);
       closeModal("#edit-modal");
-    });
-    document.querySelector("#submit-move")?.addEventListener("click", () => {
-      const task = getSelectedTask();
-      if (!task) return;
-      const target = document.querySelector("#move-group-select")?.value;
-      if (target) {
-        applyMove(task, target);
-      }
-      closeModal("#move-modal");
     });
     document.querySelector("#submit-group-manage")?.addEventListener("click", async () => {
       const group = getSelectedGroup();
