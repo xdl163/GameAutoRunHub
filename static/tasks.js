@@ -221,6 +221,12 @@
     return d && !Number.isNaN(d.getTime()) ? d : now;
   }
 
+  function formatLocalDateTimeInput(date = new Date()) {
+    const offsetMs = date.getTimezoneOffset() * 60000;
+    const local = new Date(date.getTime() - offsetMs);
+    return local.toISOString().slice(0, 16);
+  }
+
   function calculatePausedSeconds(task, now = new Date()) {
     const basePaused = Number(task.paused_seconds || 0);
     if (task.status !== "paused") return Math.max(basePaused, 0);
@@ -1135,7 +1141,7 @@
     document.querySelector("#task-multiplier-current").value = taskDefaults.multiplier;
     document.querySelector("#task-multiplier-initial").value = taskDefaults.initialMultiplier;
     document.querySelector("#task-chest-duration").value = 12;
-    document.querySelector("#task-start").value = new Date().toISOString().slice(0, 16);
+    document.querySelector("#task-start").value = formatLocalDateTimeInput(new Date());
     updateTypeSections("#task-modal", createTaskType);
     setCreateTypeButtons(createTaskType);
   }
@@ -1218,7 +1224,7 @@
       alert("只能在自己的分组下创建任务");
       return;
     }
-    const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);
+    const start = document.querySelector("#task-start").value || formatLocalDateTimeInput(new Date());
     const payload = {
       name: name || null,
       task_type: type,
