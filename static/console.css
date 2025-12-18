@@ -405,6 +405,9 @@ button.ghost.mini.danger {
   gap: 8px;
   flex-wrap: wrap;
 }
+.pill-group.selectable-list .pill.selectable {
+  border-style: dashed;
+}
 .type-toggle .pill {
   min-width: 90px;
   text-align: center;

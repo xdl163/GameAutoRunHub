@@ -285,7 +285,8 @@
           </label>
           <label class="field">
             <span>可访问成员（用逗号分隔用户名）</span>
-            <input type="text" id="manage-group-access" placeholder="例如：alice,bob" />
+            <div id="manage-access-list" class="pill-group selectable-list"></div>
+            <input type="text" id="manage-access-input" placeholder="输入用户名后回车添加" />
           </label>
           <div class="actions" style="justify-content: flex-end">
             <button id="submit-group-manage" class="primary" type="button">保存</button>

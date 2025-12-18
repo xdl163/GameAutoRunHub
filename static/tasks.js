@@ -9,6 +9,7 @@
   let currentUser = null;
   let selectedTaskId = null;
   let selectedGroupId = null;
+  let manageAccessSelection = [];
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -150,6 +151,7 @@
       button.addEventListener("click", (evt) => {
         if (evt.target?.dataset?.delete !== undefined || evt.target?.dataset?.manage !== undefined) return;
         currentGroupId = group.id;
+        renderGroups();
         renderTasks();
       });
       button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
@@ -459,7 +461,8 @@
     setSelectedGroup(group);
     document.querySelector("#manage-group-name").value = group.name || "";
     document.querySelector("#manage-group-desc").value = group.description || "";
-    document.querySelector("#manage-group-access").value = (group.accessors || []).join(",");
+    manageAccessSelection = [...new Set(group.accessors || [])];
+    renderManageAccessList();
     openModal("#group-manage-modal");
   }
 
@@ -539,6 +542,46 @@
     logAction(task, "移动分组", `移动至分组「${target.name}」`);
     task.updated_at = new Date().toISOString();
     saveStateAndRender();
+  }
+
+  function collectUserCandidates() {
+    const names = new Set();
+    if (currentUser?.username) names.add(currentUser.username);
+    taskState.groups.forEach((g) => {
+      if (g.owner) names.add(g.owner);
+      (g.accessors || []).forEach((n) => names.add(n));
+    });
+    taskState.tasks.forEach((t) => {
+      if (t.owner) names.add(t.owner);
+    });
+    return Array.from(names).sort();
+  }
+
+  function renderManageAccessList() {
+    const container = document.querySelector("#manage-access-list");
+    if (!container) return;
+    const candidates = collectUserCandidates();
+    container.innerHTML = candidates
+      .map(
+        (name) => `
+        <button type="button" class="pill selectable ${manageAccessSelection.includes(name) ? "active" : ""}" data-name="${name}">
+          ${name}
+        </button>`
+      )
+      .join("");
+
+    container.querySelectorAll("[data-name]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const name = btn.dataset.name;
+        if (!name) return;
+        if (manageAccessSelection.includes(name)) {
+          manageAccessSelection = manageAccessSelection.filter((n) => n !== name);
+        } else {
+          manageAccessSelection.push(name);
+        }
+        renderManageAccessList();
+      });
+    });
   }
 
   function handleAction(task, action) {
@@ -783,12 +826,7 @@
       if (!group) return;
       group.name = document.querySelector("#manage-group-name").value.trim() || group.name;
       group.description = document.querySelector("#manage-group-desc").value.trim();
-      const access = document
-        .querySelector("#manage-group-access")
-        .value.split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
-      group.accessors = access;
+      group.accessors = [...new Set(manageAccessSelection)];
       group.updated_at = new Date().toISOString();
       saveStateAndRender();
       closeModal("#group-manage-modal");
@@ -801,6 +839,19 @@
       taskState = loadTaskState();
       renderGroups();
       renderTasks();
+    });
+    document.querySelector("#manage-access-input")?.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter") {
+        evt.preventDefault();
+        const value = evt.target.value.trim();
+        if (value) {
+          if (!manageAccessSelection.includes(value)) {
+            manageAccessSelection.push(value);
+          }
+          evt.target.value = "";
+          renderManageAccessList();
+        }
+      }
     });
     bindModalClose();
     bindSuggest("#task-device", "#task-device-suggest");
