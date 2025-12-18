@@ -75,6 +75,9 @@ def _attach_task_counts(db: Session, groups: list[TaskGroup]) -> list[TaskGroup]
 
 def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
     default_group, completed_group = ensure_user_default_groups(db, owner=requester)
+    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        groups = task_group_repository.list_all(db)
+        return _attach_task_counts(db, _attach_owner_meta(db, groups))
     authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
     groups = task_group_repository.list_owned_or_authorized(
         db, owner_id=requester.id, authorized_group_ids=authorized_ids
@@ -157,6 +160,8 @@ def delete_group(db: Session, *, requester: User, group_id: int) -> TaskGroup:
 
 
 def resolve_accessible_group_ids(db: Session, *, requester: User) -> list[int]:
+    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        return [g.id for g in task_group_repository.list_all(db)]
     ensure_user_default_groups(db, owner=requester)
     authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
     owned_groups = task_group_repository.list_owned_or_authorized(

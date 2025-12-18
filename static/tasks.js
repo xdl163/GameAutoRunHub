@@ -326,7 +326,11 @@
     ensureDefaultGroups();
     const list = document.querySelector("#group-list");
     if (!list) return;
-    const groups = taskState.groups || [];
+    let groups = taskState.groups || [];
+    const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
+    if (isAdmin && currentOwner !== "all") {
+      groups = groups.filter((g) => (g.owner_username || g.owner) === currentOwner);
+    }
     const allBtn = document.createElement("button");
     allBtn.className = `group-item ${currentGroupId === "all" ? "active" : ""}`;
     allBtn.innerHTML = `<div><strong>全部任务</strong><p class="muted">查看所有分组</p></div><span class="badge">${taskState.tasks.length}</span>`;
