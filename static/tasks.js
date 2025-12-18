@@ -322,6 +322,14 @@
     return { duration, end, remainingSeconds };
   }
 
+  function computeRemainingSeconds(task, now = new Date()) {
+    if (!task) return Number.POSITIVE_INFINITY;
+    if (task.task_type === "score") return computeScoreMeta(task, now).remainingSeconds;
+    if (task.task_type === "multiplier") return computeMultiplierMeta(task, now).remainingSeconds;
+    if (task.task_type === "chest") return computeChestMeta(task, now).remainingSeconds;
+    return Number.POSITIVE_INFINITY;
+  }
+
   function renderGroups() {
     ensureDefaultGroups();
     const list = document.querySelector("#group-list");
@@ -482,21 +490,39 @@
 
   function sortTasks(tasks) {
     const copied = [...tasks];
-    copied.sort((a, b) => {
+    const withTerminationGuard = (compareFn) => (a, b) => {
       if (a.status === "terminated" && b.status !== "terminated") return 1;
       if (a.status !== "terminated" && b.status === "terminated") return -1;
-      return 0;
-    });
+      return compareFn(a, b);
+    };
+    const now = new Date();
     switch (currentSort) {
       case "status":
-        return copied.sort((a, b) => (a.status || "").localeCompare(b.status || ""));
+        return copied.sort(withTerminationGuard((a, b) => (a.status || "").localeCompare(b.status || "")));
       case "type":
-        return copied.sort((a, b) => (a.task_type || "").localeCompare(b.task_type || ""));
+        return copied.sort(withTerminationGuard((a, b) => (a.task_type || "").localeCompare(b.task_type || "")));
       case "start_time":
-        return copied.sort((a, b) => new Date(a.start_time || 0) - new Date(b.start_time || 0));
+      case "start_time_asc":
+        return copied.sort(
+          withTerminationGuard((a, b) => new Date(a.start_time || 0) - new Date(b.start_time || 0)),
+        );
+      case "start_time_desc":
+        return copied.sort(
+          withTerminationGuard((a, b) => new Date(b.start_time || 0) - new Date(a.start_time || 0)),
+        );
+      case "remaining_asc":
+        return copied.sort(
+          withTerminationGuard((a, b) => computeRemainingSeconds(a, now) - computeRemainingSeconds(b, now)),
+        );
+      case "remaining_desc":
+        return copied.sort(
+          withTerminationGuard((a, b) => computeRemainingSeconds(b, now) - computeRemainingSeconds(a, now)),
+        );
       case "updated_desc":
       default:
-        return copied.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+        return copied.sort(
+          withTerminationGuard((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)),
+        );
     }
   }
 

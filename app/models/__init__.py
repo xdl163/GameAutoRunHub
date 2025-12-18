@@ -4,6 +4,7 @@ from .account_operation_log import AccountOperationLog
 from .chest_task_detail import ChestTaskDetail
 from .device import Device
 from .device_operation_log import DeviceOperationLog
+from .group_operation_log import GroupOperationLog
 from .enums import (
     DevicePlatformEnum,
     DeviceStatusEnum,
@@ -24,6 +25,7 @@ __all__ = [
     "ChestTaskDetail",
     "Device",
     "DeviceOperationLog",
+    "GroupOperationLog",
     "DevicePlatformEnum",
     "DeviceStatusEnum",
     "GroupAuthorization",
