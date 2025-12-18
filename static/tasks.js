@@ -5,12 +5,12 @@
   let currentGroupId = "all";
   let currentSort = "updated_desc";
   let currentOwner = "all";
+  let currentStatus = "all";
   let currentType = "all";
   let currentUser = null;
   let selectedTaskId = null;
   let selectedGroupId = null;
   let manageAccessSelection = [];
-  let manageAccessKeyword = "";
   let userOptions = [];
   let userLoadPromise = null;
 
@@ -27,6 +27,15 @@
     multiplier: "挂机倍率",
     chest: "宝箱",
   };
+
+  const StatusFilters = [
+    { id: "all", label: "全部状态" },
+    { id: "pending", label: StatusLabels.pending.label },
+    { id: "running", label: StatusLabels.running.label },
+    { id: "paused", label: StatusLabels.paused.label },
+    { id: "completed", label: StatusLabels.completed.label },
+    { id: "terminated", label: StatusLabels.terminated.label },
+  ];
 
   const TypeFilters = [
     { id: "all", label: "全部类型" },
@@ -101,6 +110,7 @@
     saveTaskState(taskState);
     renderGroups();
     renderOwnerFilter();
+    renderStatusFilter();
     renderTypeFilter();
     renderTasks();
   }
@@ -214,6 +224,22 @@
     });
   }
 
+  function renderStatusFilter() {
+    const wrapper = document.querySelector("#status-filter");
+    if (!wrapper) return;
+    wrapper.innerHTML = "";
+    StatusFilters.forEach((item) => {
+      const pill = document.createElement("button");
+      pill.className = `pill ${currentStatus === item.id ? "active" : ""}`;
+      pill.textContent = item.label;
+      pill.addEventListener("click", () => {
+        currentStatus = item.id;
+        renderTasks();
+      });
+      wrapper.appendChild(pill);
+    });
+  }
+
   function renderOwnerFilter() {
     const field = document.querySelector("#owner-filter-field");
     const select = document.querySelector("#owner-filter");
@@ -268,6 +294,9 @@
     let tasks = [...taskState.tasks];
     if (currentGroupId !== "all") {
       tasks = tasks.filter((t) => t.group_id === currentGroupId);
+    }
+    if (currentStatus !== "all") {
+      tasks = tasks.filter((t) => t.status === currentStatus);
     }
     if (currentType !== "all") {
       tasks = tasks.filter((t) => t.task_type === currentType);
@@ -493,11 +522,9 @@
     manageAccessSelection = (group.accessors || [])
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id));
-    manageAccessKeyword = "";
-    const accessInput = document.querySelector("#manage-access-input");
-    if (accessInput) accessInput.value = "";
     await ensureUserOptionsLoaded();
-    renderManageAccessList();
+    manageAccessSelection = manageAccessSelection.filter((id) => filteredUserOptions().some((u) => Number(u.id) === id));
+    renderAccessSummary();
     openModal("#group-manage-modal");
   }
 
@@ -600,15 +627,34 @@
     }));
   }
 
+  function filteredUserOptions() {
+    const base = userOptions.length ? userOptions : fallbackUserOptions();
+    return base.filter((user) => user.username !== currentUser?.username);
+  }
+
   function formatUserLabel(user) {
     return user.display_name ? `${user.display_name}（${user.username}）` : user.username;
   }
 
-  function renderManageAccessList(keyword = manageAccessKeyword) {
-    const container = document.querySelector("#manage-access-list");
+  function renderAccessSummary() {
+    const container = document.querySelector("#manage-access-current");
     if (!container) return;
+    const options = filteredUserOptions();
+    const selectedUsers = options.filter((u) => manageAccessSelection.includes(Number(u.id)));
+    if (!selectedUsers.length) {
+      container.innerHTML = `<p class="muted mini">当前仅自己可访问</p>`;
+      return;
+    }
+    container.innerHTML = selectedUsers
+      .map((user) => `<span class="pill muted">${formatUserLabel(user)}</span>`)
+      .join("");
+  }
+
+  function renderAccessModalList(keyword = "") {
+    const list = document.querySelector("#access-modal-list");
+    if (!list) return;
     const keywordLower = keyword.trim().toLowerCase();
-    const options = (userOptions.length ? userOptions : fallbackUserOptions()).filter((user) => {
+    const options = filteredUserOptions().filter((user) => {
       if (!keywordLower) return true;
       return (
         user.username.toLowerCase().includes(keywordLower) ||
@@ -617,12 +663,12 @@
     });
 
     if (!options.length) {
-      container.innerHTML = `<p class="muted mini">暂无匹配成员</p>`;
+      list.innerHTML = `<p class="muted mini">暂无可选成员</p>`;
       return;
     }
 
-    container.innerHTML = options
-      .slice(0, 30)
+    list.innerHTML = options
+      .slice(0, 50)
       .map(
         (user) => `
         <button type="button" class="pill selectable ${manageAccessSelection.includes(Number(user.id)) ? "active" : ""}" data-id="${user.id}">
@@ -631,7 +677,7 @@
       )
       .join("");
 
-    container.querySelectorAll("[data-id]").forEach((btn) => {
+    list.querySelectorAll("[data-id]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const id = Number(btn.dataset.id);
         if (!Number.isFinite(id)) return;
@@ -640,7 +686,7 @@
         } else {
           manageAccessSelection.push(id);
         }
-        renderManageAccessList();
+        renderAccessModalList(keyword);
       });
     });
   }
@@ -747,7 +793,6 @@
   function createGroup() {
     const name = document.querySelector("#group-name").value.trim();
     const desc = document.querySelector("#group-desc").value.trim();
-    const owner = document.querySelector("#group-owner").value.trim() || currentUser.username;
     if (!name) {
       alert("请输入分组名称");
       return;
@@ -756,7 +801,7 @@
       id: `g-${Date.now()}`,
       name,
       description: desc,
-      owner,
+      owner: currentUser.username,
       is_default: false,
     };
     taskState.groups.push(newGroup);
@@ -806,17 +851,10 @@
     saveStateAndRender();
   }
 
-  function toggleOwnerFields() {
-    const groupOwnerField = document.querySelector("#group-owner-field");
-    const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
-    if (groupOwnerField) groupOwnerField.style.display = isAdmin ? "flex" : "none";
-  }
-
   function bindEvents() {
     document.querySelector("#create-group-btn")?.addEventListener("click", () => {
       document.querySelector("#group-name").value = "";
       document.querySelector("#group-desc").value = "";
-      document.querySelector("#group-owner").value = currentUser.username;
       openModal("#group-modal");
     });
     document.querySelector("#create-task-btn")?.addEventListener("click", () => {
@@ -896,32 +934,18 @@
       renderGroups();
       renderTasks();
     });
-    const manageAccessInput = document.querySelector("#manage-access-input");
-    if (manageAccessInput) {
-      manageAccessInput.addEventListener("input", (evt) => {
-        manageAccessKeyword = evt.target.value || "";
-        renderManageAccessList();
-      });
-      manageAccessInput.addEventListener("keydown", (evt) => {
-        if (evt.key === "Enter") {
-          evt.preventDefault();
-          const keyword = (evt.target.value || "").trim().toLowerCase();
-          const options = (userOptions.length ? userOptions : fallbackUserOptions()).filter(
-            (user) =>
-              user.username.toLowerCase().includes(keyword) ||
-              (user.display_name || "").toLowerCase().includes(keyword)
-          );
-          const first = options[0];
-          if (first) {
-            const id = Number(first.id);
-            if (!manageAccessSelection.includes(id)) {
-              manageAccessSelection.push(id);
-              renderManageAccessList();
-            }
-          }
-        }
-      });
-    }
+    document.querySelector("#open-access-modal")?.addEventListener("click", async () => {
+      await ensureUserOptionsLoaded();
+      renderAccessModalList();
+      openModal("#access-modal");
+    });
+    document.querySelector("#access-modal-search")?.addEventListener("input", (evt) => {
+      renderAccessModalList(evt.target.value || "");
+    });
+    document.querySelector("#submit-access-modal")?.addEventListener("click", () => {
+      renderAccessSummary();
+      closeModal("#access-modal");
+    });
     bindModalClose();
     bindSuggest("#task-device", "#task-device-suggest");
     bindSuggest("#edit-device", "#edit-device-suggest");
@@ -933,8 +957,8 @@
 
     await ensureUserOptionsLoaded();
     populateGroupSelects();
-    toggleOwnerFields();
     renderOwnerFilter();
+    renderStatusFilter();
     renderGroups();
     renderTypeFilter();
     renderTasks();

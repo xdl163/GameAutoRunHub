@@ -64,6 +64,7 @@
                       <option value="start_time">按开始时间</option>
                     </select>
                   </div>
+                  <div class="pill-group" id="status-filter"></div>
                   <div class="pill-group" id="type-filter"></div>
                 </div>
               </div>
@@ -89,10 +90,6 @@
           <label class="field">
             <span>分组描述</span>
             <input type="text" id="group-desc" placeholder="用于标记职责/场景" />
-          </label>
-          <label class="field" id="group-owner-field">
-            <span>所属员工</span>
-            <input type="text" id="group-owner" placeholder="默认当前用户，可指定可管理人" />
           </label>
           <div class="actions" style="justify-content: flex-end">
             <button id="submit-group" class="primary" type="button">保存分组</button>
@@ -280,12 +277,32 @@
             <input type="text" id="manage-group-desc" />
           </label>
           <label class="field">
-            <span>可访问成员（用逗号分隔用户名）</span>
-            <div id="manage-access-list" class="pill-group selectable-list"></div>
-            <input type="text" id="manage-access-input" placeholder="输入用户名后回车添加" />
+            <span>可访问成员</span>
+            <div id="manage-access-current" class="pill-group selectable-list"></div>
+            <button type="button" class="ghost mini" id="open-access-modal">修改成员</button>
+            <p class="muted mini">默认仅自己可访问，修改后可选择其他成员</p>
           </label>
           <div class="actions" style="justify-content: flex-end">
             <button id="submit-group-manage" class="primary" type="button">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="access-modal" class="modal-backdrop">
+      <div class="modal">
+        <header>
+          <h3>选择可访问成员</h3>
+          <button class="close-btn" data-close="#access-modal">×</button>
+        </header>
+        <div class="modal-body form-grid">
+          <label class="field">
+            <span>搜索成员</span>
+            <input type="text" id="access-modal-search" placeholder="输入用户名或姓名筛选" />
+          </label>
+          <div id="access-modal-list" class="pill-group selectable-list"></div>
+          <div class="actions" style="justify-content: flex-end">
+            <button id="submit-access-modal" class="primary" type="button">完成选择</button>
           </div>
         </div>
       </div>
