@@ -1,6 +1,7 @@
 """任务领域服务，遵循三层架构。"""
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -44,6 +45,18 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
     if group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权在该分组下创建任务")
     return group
+
+
+def _generate_task_name(task_type: TaskTypeEnum) -> str:
+    prefix_map = {
+        TaskTypeEnum.SCORE: "积分",
+        TaskTypeEnum.MULTIPLIER: "倍率",
+        TaskTypeEnum.CHEST: "宝箱",
+    }
+    prefix = prefix_map.get(task_type, "任务")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    suffix = secrets.token_hex(2)
+    return f"{prefix}任务-{timestamp}-{suffix}"
 
 
 def _update_device_binding(
@@ -107,7 +120,7 @@ def create_task(
     db: Session,
     *,
     requester: User,
-    name: str,
+    name: str | None,
     task_type: TaskTypeEnum,
     group_id: int,
     device_id: int | None,
@@ -119,6 +132,7 @@ def create_task(
     group = _ensure_group_access(db, requester=requester, group_id=group_id)
     if device_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="创建任务时必须绑定设备")
+    final_name = (name or "").strip() or _generate_task_name(task_type)
     device = device_repository.get_by_id(db, device_id)
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
@@ -130,7 +144,7 @@ def create_task(
     start_at = start_time or datetime.now(timezone.utc)
     task = task_repository.create_task(
         db,
-        name=name,
+        name=final_name,
         task_type=task_type,
         group_id=group.id,
         created_by=requester.id,

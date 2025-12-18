@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 class TaskCreate(BaseModel):
-    name: str
+    name: str | None = None
     task_type: TaskTypeEnum
     group_id: int
     device_id: int
