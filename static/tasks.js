@@ -3,7 +3,7 @@
 
   let taskState = loadTaskState();
   let currentGroupId = "all";
-  let currentSort = "updated_desc";
+  let currentSort = "remaining_asc";
   let currentOwner = "all";
   let currentStatus = "all";
   let currentType = "all";
@@ -432,6 +432,7 @@
       pill.textContent = type.label;
       pill.addEventListener("click", () => {
         currentType = type.id;
+        renderTypeFilter();
         renderTasks();
       });
       wrapper.appendChild(pill);
@@ -448,6 +449,7 @@
       pill.textContent = item.label;
       pill.addEventListener("click", () => {
         currentStatus = item.id;
+        renderStatusFilter();
         renderTasks();
       });
       wrapper.appendChild(pill);
@@ -518,10 +520,9 @@
         return copied.sort(
           withTerminationGuard((a, b) => computeRemainingSeconds(b, now) - computeRemainingSeconds(a, now)),
         );
-      case "updated_desc":
       default:
         return copied.sort(
-          withTerminationGuard((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)),
+          withTerminationGuard((a, b) => computeRemainingSeconds(a, now) - computeRemainingSeconds(b, now)),
         );
     }
   }
@@ -1377,9 +1378,6 @@
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
       renderTasks();
-    });
-    document.querySelector("#group-refresh")?.addEventListener("click", () => {
-      reloadGroupsFromServer();
     });
     document.querySelector("#open-access-modal")?.addEventListener("click", async () => {
       await ensureUserOptionsLoaded();
