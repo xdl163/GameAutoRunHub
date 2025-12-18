@@ -99,14 +99,14 @@ def add_managers(
     if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权变更分组管理员")
 
-    added_ids: list[int] = []
+    valid_ids: list[int] = []
     for user_id in manager_ids:
         user = user_repository.get_by_id(db, user_id)
-        if not user:
-            continue
-        group_authorization_repository.add_authorization(db, group_id=group_id, user_id=user.id)
-        added_ids.append(user.id)
-    return added_ids
+        if user:
+            valid_ids.append(user.id)
+
+    replaced = group_authorization_repository.replace_authorizations(db, group_id=group_id, user_ids=valid_ids)
+    return replaced
 
 
 def delete_group(db: Session, *, requester: User, group_id: int) -> TaskGroup:

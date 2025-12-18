@@ -1229,15 +1229,29 @@
       }
       closeModal("#move-modal");
     });
-    document.querySelector("#submit-group-manage")?.addEventListener("click", () => {
+    document.querySelector("#submit-group-manage")?.addEventListener("click", async () => {
       const group = getSelectedGroup();
       if (!group) return;
       group.name = document.querySelector("#manage-group-name").value.trim() || group.name;
       group.description = document.querySelector("#manage-group-desc").value.trim();
       group.accessors = [...new Set(manageAccessSelection)];
       group.updated_at = new Date().toISOString();
-      saveStateAndRender();
-      closeModal("#group-manage-modal");
+      try {
+        const resp = await apiFetch(`/api/task-groups/${group.id}/managers`, {
+          method: "POST",
+          body: JSON.stringify({ manager_ids: group.accessors }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.detail || `更新共享失败 ${resp.status}`);
+        }
+        await reloadGroupsFromServer();
+        renderAccessSummary();
+        closeModal("#group-manage-modal");
+      } catch (err) {
+        console.warn("更新分组共享失败", err);
+        alert(err.message || "更新共享失败，请稍后重试");
+      }
     });
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
