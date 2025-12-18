@@ -6,6 +6,7 @@
   let currentSort = "updated_desc";
   let currentOwner = "all";
   let currentUser = null;
+  let currentType = "all";
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -20,6 +21,13 @@
     multiplier: "挂机倍率",
     chest: "宝箱",
   };
+
+  const TypeFilters = [
+    { id: "all", label: "全部类型" },
+    { id: "score", label: "灵光积分" },
+    { id: "multiplier", label: "挂机倍率" },
+    { id: "chest", label: "宝箱" },
+  ];
 
   function fmtDate(iso) {
     if (!iso) return "-";
@@ -55,6 +63,7 @@
     renderGroups();
     renderGroupFilter();
     renderOwnerFilter();
+    renderTypeFilter();
     renderTasks();
   }
 
@@ -168,6 +177,22 @@
     });
   }
 
+  function renderTypeFilter() {
+    const wrapper = document.querySelector("#type-filter");
+    if (!wrapper) return;
+    wrapper.innerHTML = "";
+    TypeFilters.forEach((type) => {
+      const pill = document.createElement("button");
+      pill.className = `pill ${currentType === type.id ? "active" : ""}`;
+      pill.textContent = type.label;
+      pill.addEventListener("click", () => {
+        currentType = type.id;
+        renderTasks();
+      });
+      wrapper.appendChild(pill);
+    });
+  }
+
   function renderOwnerFilter() {
     const field = document.querySelector("#owner-filter-field");
     const select = document.querySelector("#owner-filter");
@@ -217,6 +242,9 @@
     let tasks = [...taskState.tasks];
     if (currentGroupId !== "all") {
       tasks = tasks.filter((t) => t.group_id === currentGroupId);
+    }
+    if (currentType !== "all") {
+      tasks = tasks.filter((t) => t.task_type === currentType);
     }
     if (currentOwner !== "all") {
       tasks = tasks.filter((t) => t.owner === currentOwner);
