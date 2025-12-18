@@ -140,6 +140,15 @@
     return Math.round(value).toLocaleString();
   }
 
+  function isOwnedGroup(group) {
+    if (!group) return false;
+    return (group.owner_username || group.owner) === currentUser?.username;
+  }
+
+  function ownedGroups() {
+    return (taskState.groups || []).filter((g) => isOwnedGroup(g));
+  }
+
   function toDateOrNow(value, now = new Date()) {
     const d = value ? new Date(value) : null;
     return d && !Number.isNaN(d.getTime()) ? d : now;
@@ -750,7 +759,7 @@
     const select = document.querySelector("#move-group-select");
     document.querySelector("#move-task-name").textContent = `当前任务：${task.name}`;
     if (select) {
-      select.innerHTML = taskState.groups
+      select.innerHTML = ownedGroups()
         .map((g) => `<option value="${g.id}" ${g.id === task.group_id ? "selected" : ""}>${g.name}</option>`)
         .join("");
     }
@@ -847,6 +856,10 @@
   function applyMove(task, targetGroupId) {
     const target = taskState.groups.find((g) => g.id === targetGroupId);
     if (!target) return;
+    if (!isOwnedGroup(target)) {
+      alert("只能将任务移动到自己的分组");
+      return;
+    }
     task.group_id = targetGroupId;
     logAction(task, "移动分组", `移动至分组「${target.name}」`);
     task.updated_at = new Date().toISOString();
@@ -1039,7 +1052,7 @@
   function populateGroupSelects() {
     const select = document.querySelector("#task-group");
     if (!select) return;
-    const options = taskState.groups.filter((g) => !isCompletedGroup(g));
+    const options = ownedGroups().filter((g) => !isCompletedGroup(g));
     select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
   }
 
@@ -1071,6 +1084,7 @@
         name: data.name || name,
         description: data.description ?? desc,
         owner: currentUser.username,
+        owner_username: currentUser.username,
         is_default: Boolean(data.is_default),
       };
       taskState.groups.push(newGroup);
@@ -1093,6 +1107,10 @@
     const targetGroup = taskState.groups.find((g) => g.id === groupId);
     if (isCompletedGroup(targetGroup)) {
       alert("已完成分组不可选择，请选择其他分组");
+      return;
+    }
+    if (!isOwnedGroup(targetGroup)) {
+      alert("只能在自己的分组下创建任务");
       return;
     }
     const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);

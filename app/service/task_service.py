@@ -41,7 +41,7 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
     if group.name == "已完成":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已完成分组不可创建新任务")
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+    if group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权在该分组下创建任务")
     return group
 
@@ -371,11 +371,10 @@ def move_group(db: Session, *, requester: User, task_id: int, target_group_id: i
     if not source_group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
 
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        if source_group.created_by != requester.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权移动该分组下的任务")
-        if group.created_by != requester.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权将任务移动到目标分组")
+    if source_group.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权移动该分组下的任务")
+    if group.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权将任务移动到目标分组")
 
     task.group_id = target_group_id
     saved = task_repository.save(db, task)
