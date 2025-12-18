@@ -38,6 +38,7 @@ class TaskRead(BaseModel):
     status: TaskStatusEnum
     group_id: int
     device_id: int | None
+    device_identifier: str | None = None
     created_by: int
     start_time: datetime | None
     end_time: datetime | None
@@ -48,6 +49,9 @@ class TaskRead(BaseModel):
     initial_multiplier: Optional[float] = None
     current_multiplier: Optional[float] = None
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
     class Config:
         from_attributes = True
@@ -106,6 +110,7 @@ def _as_task_read(task) -> TaskRead:
         status=task.status,
         group_id=task.group_id,
         device_id=task.device_id,
+        device_identifier=getattr(task.device, "device_id", None),
         created_by=task.created_by,
         start_time=task.start_time,
         end_time=task.end_time,

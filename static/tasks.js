@@ -140,6 +140,82 @@
     return Math.round(value).toLocaleString();
   }
 
+  function normalizeApiTask(apiTask) {
+    if (!apiTask) return null;
+    const groupId = apiTask.group_id ?? apiTask.groupId;
+    const deviceId = apiTask.device_identifier || apiTask.device_id || apiTask.deviceId;
+    const base = {
+      id: apiTask.id,
+      name: apiTask.name,
+      task_type: apiTask.task_type,
+      status: apiTask.status,
+      group_id: groupId != null ? String(groupId) : apiTask.group_id,
+      device_id: deviceId,
+      owner: currentUser?.username || apiTask.created_by,
+      start_time: apiTask.start_time,
+      end_time: apiTask.end_time,
+      updated_at: apiTask.updated_at,
+      paused_seconds: 0,
+      paused_at: null,
+    };
+    if (apiTask.task_type === "score") {
+      base.score = {
+        point_rate: apiTask.point_rate,
+        target_points: apiTask.target_points,
+        current_points: apiTask.current_points,
+      };
+    }
+    if (apiTask.task_type === "multiplier") {
+      base.multiplier = {
+        duration_hours: apiTask.duration_hours,
+        initial_multiplier: apiTask.initial_multiplier,
+        current_multiplier: apiTask.current_multiplier,
+      };
+    }
+    if (apiTask.task_type === "chest") {
+      base.chest = {
+        duration_hours: apiTask.duration_hours,
+      };
+    }
+    return base;
+  }
+
+  function upsertTask(normalizedTask) {
+    if (!normalizedTask) return;
+    const idx = taskState.tasks.findIndex((t) => t.id === normalizedTask.id);
+    if (idx >= 0) {
+      taskState.tasks[idx] = normalizedTask;
+    } else {
+      taskState.tasks.push(normalizedTask);
+    }
+    saveStateAndRender();
+    return normalizedTask;
+  }
+
+  async function requestAndUpdateTask(url, { method = "PATCH", body = null } = {}) {
+    const resp = await apiFetch(url, {
+      method,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || `请求失败 ${resp.status}`);
+    }
+    const data = await resp.json();
+    const updated = upsertTask(normalizeApiTask(data));
+    await refreshAllData();
+    return updated;
+  }
+
+  function isOwnedGroup(group) {
+    if (!group) return false;
+    return (group.owner_username || group.owner) === currentUser?.username;
+  }
+
+  function ownedGroups() {
+    return (taskState.groups || []).filter((g) => isOwnedGroup(g));
+  }
+
   function toDateOrNow(value, now = new Date()) {
     const d = value ? new Date(value) : null;
     return d && !Number.isNaN(d.getTime()) ? d : now;
@@ -250,21 +326,28 @@
     ensureDefaultGroups();
     const list = document.querySelector("#group-list");
     if (!list) return;
-    const groups = taskState.groups || [];
+    let groups = taskState.groups || [];
+    const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
+    if (isAdmin && currentOwner !== "all") {
+      groups = groups.filter((g) => (g.owner_username || g.owner) === currentOwner);
+    }
     const allBtn = document.createElement("button");
     allBtn.className = `group-item ${currentGroupId === "all" ? "active" : ""}`;
     allBtn.innerHTML = `<div><strong>全部任务</strong><p class="muted">查看所有分组</p></div><span class="badge">${taskState.tasks.length}</span>`;
     allBtn.addEventListener("click", () => {
       currentGroupId = "all";
-      renderTasks();
+      loadTasksFromServer("all");
     });
     list.innerHTML = "";
     list.appendChild(allBtn);
 
     groups.forEach((group) => {
-      const count = taskState.tasks.filter((t) => t.group_id === group.id).length;
+      const count = Number.isFinite(Number(group.task_count))
+        ? Number(group.task_count)
+        : taskState.tasks.filter((t) => t.group_id === group.id).length;
       const button = document.createElement("button");
       button.className = `group-item ${currentGroupId === group.id ? "active" : ""}`;
+      const allowDelete = isOwnedGroup(group) && !group.is_default;
       button.innerHTML = `
         <div>
           <strong>${group.name}</strong>
@@ -273,25 +356,27 @@
         </div>
         <div class="group-actions">
           <span class="badge">${count}</span>
-          <button class="ghost mini" data-manage>管理</button>
-          ${group.is_default ? "" : '<button class="ghost mini danger" data-delete>删除</button>'}
+          ${isOwnedGroup(group) ? '<button class="ghost mini" data-manage>管理</button>' : ""}
+          ${allowDelete ? '<button class="ghost mini danger" data-delete>删除</button>' : ""}
         </div>
       `;
       button.addEventListener("click", (evt) => {
         if (evt.target?.dataset?.delete !== undefined || evt.target?.dataset?.manage !== undefined) return;
         currentGroupId = group.id;
         renderGroups();
-        renderTasks();
+        loadTasksFromServer(group.id);
       });
-      button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
-        evt.stopPropagation();
-        openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
-      });
-      if (!group.is_default) {
+      if (isOwnedGroup(group)) {
+        button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
+        });
+      }
+      if (allowDelete) {
         button.querySelector("[data-delete]")?.addEventListener("click", (evt) => {
           evt.stopPropagation();
           if (!confirm(`删除分组「${group.name}」，组内任务将移至「未分组」`)) return;
-          deleteGroup(group.id);
+          deleteGroup(group).catch((err) => console.warn("删除分组失败", err));
         });
       }
       list.appendChild(button);
@@ -313,6 +398,7 @@
           owner: g.owner_username || g.owner || g.created_by || "",
           owner_username: g.owner_username || g.owner || g.created_by || "",
           owner_display_name: g.owner_display_name || g.owner || "",
+          task_count: Number(g.task_count ?? 0),
         }));
         taskState.groups = mapped;
         saveTaskState(taskState);
@@ -431,18 +517,48 @@
     return sortTasks(tasks);
   }
 
+  async function loadTasksFromServer(groupId = currentGroupId) {
+    try {
+      const params = new URLSearchParams();
+      if (groupId && groupId !== "all") params.append("group_id", groupId);
+      const resp = await apiFetch(`/api/tasks${params.toString() ? `?${params.toString()}` : ""}`);
+      if (!resp.ok) throw new Error(`加载任务失败 ${resp.status}`);
+      const data = await resp.json();
+      taskState.tasks = (data || []).map((task) => normalizeApiTask(task)).filter(Boolean);
+      saveTaskState(taskState);
+      renderTasks();
+      renderGroups();
+    } catch (err) {
+      console.warn("从服务端加载任务失败", err);
+      alert(err.message || "加载任务失败，请稍后重试");
+    }
+  }
+
+  async function refreshAllData() {
+    await Promise.all([reloadGroupsFromServer(), loadTasksFromServer(currentGroupId)]);
+  }
+
   function deviceLine(task) {
     if (task.status === "terminated") return "";
     return task.device_id ? `<span class="badge subtle">设备：${task.device_id}</span>` : `<span class="badge warning">待绑定设备</span>`;
   }
 
+  function getGroupById(id) {
+    return taskState.groups.find((g) => g.id === id);
+  }
+
+  function canEditTask(task) {
+    const group = getGroupById(task.group_id);
+    return isOwnedGroup(group);
+  }
+
   function renderTaskFooter(task) {
+    const editable = canEditTask(task);
     return `
       <div class="task-actions">
         <button class="ghost mini" data-action="start-pause">${task.status === "running" ? "暂停" : "开始"}</button>
         <button class="ghost mini" data-action="patch">${task.task_type === "score" ? "补暂停/积分" : "补暂停"}</button>
-        <button class="ghost mini" data-action="edit">修改</button>
-        <button class="ghost mini" data-action="move">移动分组</button>
+        ${editable ? '<button class="ghost mini" data-action="edit">修改</button>' : ""}
         <button class="ghost mini danger" data-action="terminate">终止</button>
       </div>
     `;
@@ -637,7 +753,7 @@
       alert("设备当前不可用，请选择空闲设备");
       return { error: true };
     }
-    return { value: match.device_id, record: match };
+    return { value: match.device_id, record: match, device_pk: match.id };
   }
 
   async function resolveDeviceRecord(deviceId) {
@@ -664,24 +780,8 @@
   }
 
   async function syncDeviceBinding(nextDeviceRecord, prevDeviceId) {
-    const tasks = [];
-    if (prevDeviceId) {
-      const prevRecord = await resolveDeviceRecord(prevDeviceId);
-      if (prevRecord?.id) tasks.push(updateDeviceStatus(prevRecord, "idle"));
-    }
-    if (nextDeviceRecord?.id) {
-      tasks.push(updateDeviceStatus(nextDeviceRecord, "running"));
-    }
-    if (!tasks.length) return;
-
-    const results = await Promise.allSettled(tasks);
-    const errors = results
-      .filter((r) => r.status === "rejected")
-      .map((r) => r.reason?.message || r.reason || "未知错误");
-    if (errors.length) {
-      console.warn("同步设备状态失败", errors);
-      alert("设备状态同步失败，请检查设备池或稍后重试");
-    }
+    // 设备状态由后端在绑定/解绑时统一维护，这里避免再次触发需要管理权限的设备状态更新
+    return { nextDeviceRecord, prevDeviceId };
   }
 
   function logAction(task, action, detail, scope = "task") {
@@ -729,6 +829,7 @@
     setSelectedTask(task);
     document.querySelector("#edit-task-name").textContent = `当前任务：${task.name}`;
     document.querySelector("#edit-device").value = task.device_id || "";
+    populateEditGroupSelect(task);
     updateTypeSections("#edit-modal", task.task_type);
     if (task.task_type === "score") {
       document.querySelector("#edit-score-target").value = task.score?.target_points || 0;
@@ -743,18 +844,6 @@
       document.querySelector("#edit-chest-hours").value = task.chest?.duration_hours || 0;
     }
     openModal("#edit-modal");
-  }
-
-  function openMoveModal(task) {
-    setSelectedTask(task);
-    const select = document.querySelector("#move-group-select");
-    document.querySelector("#move-task-name").textContent = `当前任务：${task.name}`;
-    if (select) {
-      select.innerHTML = taskState.groups
-        .map((g) => `<option value="${g.id}" ${g.id === task.group_id ? "selected" : ""}>${g.name}</option>`)
-        .join("");
-    }
-    openModal("#move-modal");
   }
 
   async function openGroupManageModal(group) {
@@ -772,85 +861,69 @@
 
   function applyPatch(task, addPoints, addHours) {
     if (!(addPoints > 0) && !(addHours > 0)) return;
-    const detailMsg = [];
-    if (task.task_type === "score" && addPoints > 0) {
-      task.score = task.score || {};
-      task.score.current_points = Number(task.score.current_points || 0) + addPoints;
-      detailMsg.push(`补充积分 ${addPoints}`);
-    }
-    if (addHours > 0) {
-      if (task.task_type === "multiplier") {
-        task.multiplier = task.multiplier || {};
-        task.multiplier.duration_hours = Number(task.multiplier.duration_hours || 0) + addHours;
-      }
-      if (task.task_type === "chest") {
-        task.chest = task.chest || {};
-        task.chest.duration_hours = Number(task.chest.duration_hours || 0) + addHours;
-      }
-      detailMsg.push(`补充时长 ${addHours} 小时`);
-    }
-    if (detailMsg.length) {
-      logAction(task, "补暂停", detailMsg.join("；"));
-    }
-    task.updated_at = new Date().toISOString();
-    saveStateAndRender();
+    requestAndUpdateTask(`/api/tasks/${task.id}/patch`, {
+      body: { add_points: addPoints || null, add_hours: addHours || null },
+    }).catch((err) => {
+      console.warn("补暂停/补时失败", err);
+      alert(err.message || "补暂停/补时失败，请稍后重试");
+    });
   }
 
   async function applyEdit(task, payload) {
-    const changes = [];
-    const prevDevice = task.device_id;
+    const requests = [];
     if (payload.device !== undefined) {
-      task.device_id = payload.device || null;
-      if (payload.device !== prevDevice) {
-        changes.push(payload.device ? `绑定设备 ${payload.device}` : "解绑设备");
-        logAction(task, payload.device ? "更换设备" : "解绑设备", changes.at(-1), "device");
-        await syncDeviceBinding(payload.deviceRecord, prevDevice);
-      }
+      requests.push(
+        requestAndUpdateTask(`/api/tasks/${task.id}/device`, { body: { device_id: payload.device } }),
+      );
     }
+
+    const detailPayload = {};
     if (task.task_type === "score" && payload.score) {
-      if (payload.score.target_points !== undefined) {
-        task.score.target_points = payload.score.target_points;
-        changes.push(`目标积分调整为 ${payload.score.target_points}`);
-      }
-      if (payload.score.point_rate !== undefined) {
-        task.score.point_rate = payload.score.point_rate;
-        changes.push(`积分速率调整为 ${payload.score.point_rate}`);
-      }
+      detailPayload.score_target = payload.score.target_points;
+      detailPayload.score_rate = payload.score.point_rate;
     }
     if (task.task_type === "multiplier" && payload.multiplier) {
-      if (payload.multiplier.duration_hours !== undefined) {
-        task.multiplier.duration_hours = payload.multiplier.duration_hours;
-        changes.push(`时长调整为 ${payload.multiplier.duration_hours} 小时`);
-      }
-      if (payload.multiplier.initial_multiplier !== undefined) {
-        task.multiplier.initial_multiplier = payload.multiplier.initial_multiplier;
-        changes.push(`初始倍率调整为 ${payload.multiplier.initial_multiplier}`);
-      }
-      if (payload.multiplier.current_multiplier !== undefined) {
-        task.multiplier.current_multiplier = payload.multiplier.current_multiplier;
-        changes.push(`当前倍率调整为 ${payload.multiplier.current_multiplier}`);
-      }
+      detailPayload.multiplier_hours = payload.multiplier.duration_hours;
+      detailPayload.multiplier_initial = payload.multiplier.initial_multiplier;
+      detailPayload.multiplier_increment = payload.multiplier.current_multiplier;
     }
     if (task.task_type === "chest" && payload.chest) {
-      if (payload.chest.duration_hours !== undefined) {
-        task.chest.duration_hours = payload.chest.duration_hours;
-        changes.push(`时长调整为 ${payload.chest.duration_hours} 小时`);
-      }
+      detailPayload.chest_hours = payload.chest.duration_hours;
     }
-    if (changes.length) {
-      logAction(task, "修改", changes.join("；"));
+    const hasDetailPayload = Object.values(detailPayload).some((v) => v !== undefined && v !== null);
+    if (hasDetailPayload) {
+      requests.push(requestAndUpdateTask(`/api/tasks/${task.id}/detail`, { body: detailPayload }));
     }
-    task.updated_at = new Date().toISOString();
-    saveStateAndRender();
+
+    if (payload.target_group_id && String(payload.target_group_id) !== String(task.group_id)) {
+      requests.push(
+        requestAndUpdateTask(`/api/tasks/${task.id}/group`, { body: { target_group_id: Number(payload.target_group_id) } }),
+      );
+    }
+
+    if (!requests.length) return;
+
+    try {
+      await Promise.all(requests);
+    } catch (err) {
+      console.warn("修改任务失败", err);
+      alert(err.message || "修改任务失败，请稍后重试");
+    }
   }
 
   function applyMove(task, targetGroupId) {
     const target = taskState.groups.find((g) => g.id === targetGroupId);
     if (!target) return;
-    task.group_id = targetGroupId;
-    logAction(task, "移动分组", `移动至分组「${target.name}」`);
-    task.updated_at = new Date().toISOString();
-    saveStateAndRender();
+    if (!isOwnedGroup(target)) {
+      alert("只能将任务移动到自己的分组");
+      return;
+    }
+    requestAndUpdateTask(`/api/tasks/${task.id}/group`, {
+      body: { target_group_id: Number(targetGroupId) },
+    }).catch((err) => {
+      console.warn("移动分组失败", err);
+      alert(err.message || "移动分组失败，请稍后重试");
+    });
   }
 
   function collectUserCandidates() {
@@ -939,27 +1012,6 @@
   }
 
   async function handleAction(task, action) {
-    const now = new Date().toISOString();
-    if (action === "start-pause") {
-      if (task.status === "running") {
-        task.status = "paused";
-        task.paused_at = now;
-        logAction(task, "暂停任务", `暂停任务「${task.name}」`);
-      } else {
-        if (task.status === "paused" && task.paused_at) {
-          const pausedAt = new Date(task.paused_at);
-          if (!Number.isNaN(pausedAt.getTime())) {
-            const pausedSeconds = Math.max(Math.floor((new Date(now).getTime() - pausedAt.getTime()) / 1000), 0);
-            task.paused_seconds = Number(task.paused_seconds || 0) + pausedSeconds;
-          }
-        }
-        task.paused_at = null;
-        task.status = "running";
-        task.start_time = task.start_time || now;
-        logAction(task, "开始任务", `开始/恢复任务「${task.name}」`);
-      }
-    }
-
     if (action === "patch") {
       openPatchModal(task);
       return;
@@ -975,28 +1027,53 @@
       return;
     }
 
-    if (action === "terminate") {
-      if (confirm("终止任务将释放设备，确定终止？")) {
-        const prevDevice = task.device_id;
-        task.status = "terminated";
-        task.group_id = taskState.groups.find((g) => g.id === "g-completed") ? "g-completed" : task.group_id;
-        logAction(task, "终止任务", `终止任务「${task.name}」并释放设备 ${task.device_id || "未绑定"}`, "device");
-        task.device_id = null;
-        task.paused_at = null;
-        await syncDeviceBinding(null, prevDevice);
-      }
+    if (action === "start-pause") {
+      const nextAction =
+        task.status === "running" ? "pause" : task.status === "paused" ? "resume" : "start";
+      requestAndUpdateTask(`/api/tasks/${task.id}/status`, { body: { action: nextAction } }).catch((err) => {
+        console.warn("更新任务状态失败", err);
+        alert(err.message || "更新任务状态失败，请稍后重试");
+      });
+      return;
     }
 
-    task.updated_at = now;
-    saveStateAndRender();
+    if (action === "terminate") {
+      if (!confirm("终止任务将释放设备，确定终止？")) return;
+      requestAndUpdateTask(`/api/tasks/${task.id}/status`, { body: { action: "terminate" } }).catch((err) => {
+        console.warn("终止任务失败", err);
+        alert(err.message || "终止任务失败，请稍后重试");
+      });
+    }
   }
 
-  function deleteGroup(groupId) {
-    ensureDefaultGroups();
-    const defaultGroup = taskState.groups.find((g) => g.id === "g-default" && g.is_default) || taskState.groups[0];
-    taskState.tasks = taskState.tasks.map((task) => (task.group_id === groupId ? { ...task, group_id: defaultGroup.id } : task));
-    taskState.groups = taskState.groups.filter((g) => g.id !== groupId);
-    saveStateAndRender();
+  async function deleteGroup(group) {
+    if (!group || !isOwnedGroup(group)) {
+      alert("只能删除自己创建的分组");
+      return;
+    }
+    const groupPk = Number(group.id);
+    if (!Number.isFinite(groupPk)) {
+      alert("分组标识无效，无法删除");
+      return;
+    }
+    try {
+      const resp = await apiFetch(`/api/task-groups/${groupPk}`, { method: "DELETE" });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || `删除分组失败 ${resp.status}`);
+      }
+      ensureDefaultGroups();
+      const defaultGroup = taskState.groups.find((g) => g.id === "g-default" && g.is_default) || taskState.groups[0];
+      taskState.tasks = taskState.tasks.map((task) =>
+        task.group_id === group.id ? { ...task, group_id: defaultGroup.id } : task,
+      );
+      taskState.groups = taskState.groups.filter((g) => g.id !== group.id);
+      saveStateAndRender();
+      await reloadGroupsFromServer();
+    } catch (err) {
+      console.warn("删除分组失败", err);
+      alert(err.message || "删除分组失败，请稍后重试");
+    }
   }
 
   function openModal(id) {
@@ -1039,8 +1116,16 @@
   function populateGroupSelects() {
     const select = document.querySelector("#task-group");
     if (!select) return;
-    const options = taskState.groups.filter((g) => !isCompletedGroup(g));
+    const options = ownedGroups().filter((g) => !isCompletedGroup(g));
     select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
+  }
+
+  function populateEditGroupSelect(task) {
+    const select = document.querySelector("#edit-group");
+    if (!select) return;
+    const options = ownedGroups().filter((g) => !isCompletedGroup(g));
+    select.innerHTML = options.map((g) => `<option value="${g.id}">${g.name}</option>`).join("");
+    select.value = task.group_id;
   }
 
   function setCreateTypeButtons(type) {
@@ -1071,6 +1156,7 @@
         name: data.name || name,
         description: data.description ?? desc,
         owner: currentUser.username,
+        owner_username: currentUser.username,
         is_default: Boolean(data.is_default),
       };
       taskState.groups.push(newGroup);
@@ -1095,45 +1181,52 @@
       alert("已完成分组不可选择，请选择其他分组");
       return;
     }
+    if (!isOwnedGroup(targetGroup)) {
+      alert("只能在自己的分组下创建任务");
+      return;
+    }
     const start = document.querySelector("#task-start").value || new Date().toISOString().slice(0, 16);
     if (!name) return alert("请输入任务名称");
-    const newTask = {
-      id: Date.now(),
+    const payload = {
       name,
       task_type: type,
-      status: "running",
-      group_id: groupId,
-      device_id: validatedDevice.value,
-      owner: currentUser.username,
+      group_id: Number(groupId),
+      device_id: validatedDevice.device_pk,
       start_time: new Date(start).toISOString(),
-      updated_at: new Date().toISOString(),
-      paused_seconds: 0,
-      paused_at: null,
     };
     if (type === "score") {
-      newTask.score = {
-        target_points: Number(document.querySelector("#task-score-target").value || 360000),
-        current_points: Number(document.querySelector("#task-score-current").value || 0),
-        point_rate: Number(document.querySelector("#task-score-rate").value || 7000),
-      };
+      payload.score_point_rate = Number(document.querySelector("#task-score-rate").value || 7000);
+      payload.score_target = Number(document.querySelector("#task-score-target").value || 360000);
     }
     if (type === "multiplier") {
-      newTask.multiplier = {
-        duration_hours: Number(document.querySelector("#task-multiplier-duration").value || 0),
-        initial_multiplier: Number(document.querySelector("#task-multiplier-initial").value || 1.0),
-        current_multiplier: Number(document.querySelector("#task-multiplier-current").value || 1.0),
-      };
+      payload.multiplier_hours = Number(document.querySelector("#task-multiplier-duration").value || 0);
+      payload.multiplier_initial = Number(document.querySelector("#task-multiplier-initial").value || 1.0);
+      payload.multiplier_current = Number(document.querySelector("#task-multiplier-current").value || 1.0);
     }
     if (type === "chest") {
-      newTask.chest = {
-        duration_hours: Number(document.querySelector("#task-chest-duration").value || 0),
-      };
+      payload.chest_hours = Number(document.querySelector("#task-chest-duration").value || 0);
     }
-    await syncDeviceBinding(validatedDevice.record, null);
-    taskState.tasks.push(newTask);
-    logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
-    closeModal("#task-modal");
-    saveStateAndRender();
+
+    try {
+      const resp = await apiFetch("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || `创建任务失败 ${resp.status}`);
+      }
+      const created = await resp.json();
+      const newTask = normalizeApiTask(created);
+      taskState.tasks.push(newTask);
+      logAction(newTask, "创建任务", `创建${TypeLabels[type]}任务「${name}」`);
+      closeModal("#task-modal");
+      saveStateAndRender();
+      await refreshAllData();
+    } catch (err) {
+      console.warn("创建任务失败", err);
+      alert(err.message || "创建任务失败，请稍后重试");
+    }
   }
 
   function isCompletedGroup(group) {
@@ -1207,6 +1300,7 @@
       const payload = {
         device: validatedDevice.value,
         deviceRecord: validatedDevice.record,
+        target_group_id: document.querySelector("#edit-group")?.value || null,
         score: null,
         multiplier: null,
         chest: null,
@@ -1229,15 +1323,6 @@
       }
       await applyEdit(task, payload);
       closeModal("#edit-modal");
-    });
-    document.querySelector("#submit-move")?.addEventListener("click", () => {
-      const task = getSelectedTask();
-      if (!task) return;
-      const target = document.querySelector("#move-group-select")?.value;
-      if (target) {
-        applyMove(task, target);
-      }
-      closeModal("#move-modal");
     });
     document.querySelector("#submit-group-manage")?.addEventListener("click", async () => {
       const group = getSelectedGroup();
@@ -1296,6 +1381,7 @@
     await ensureUserOptionsLoaded();
     await ensureDeviceOptions("");
     await reloadGroupsFromServer();
+    await loadTasksFromServer("all");
     populateGroupSelects();
     renderOwnerFilter();
     renderStatusFilter();
@@ -1305,6 +1391,7 @@
     startRealtimeTicker();
     setCreateTypeButtons(createTaskType);
     updateTypeSections("#task-modal", createTaskType);
+    setInterval(refreshAllData, 5000);
     bindEvents();
   });
 })();

@@ -95,6 +95,7 @@ async def list_devices(
         status=status,
         idle_only=idle_only,
         creator_username=username,
+        owner_only=False,
     )
     user_map = _build_user_map(db, devices)
     return [_as_device_read(device, user_map) for device in devices]
@@ -108,7 +109,7 @@ async def list_devices(
 )
 async def list_device_options(q: str | None = None, idle_only: bool = False, current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    devices = device_service.list_devices(db, requester=user, device_id=q, idle_only=idle_only)
+    devices = device_service.list_devices(db, requester=user, device_id=q, idle_only=idle_only, owner_only=True)
     user_map = _build_user_map(db, devices)
     return [_as_device_read(device, user_map) for device in devices]
 
@@ -121,7 +122,7 @@ async def list_device_options(q: str | None = None, idle_only: bool = False, cur
 )
 async def list_idle_devices(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    devices = device_service.list_devices(db, requester=user, idle_only=True)
+    devices = device_service.list_devices(db, requester=user, idle_only=True, owner_only=True)
     user_map = _build_user_map(db, devices)
     return [_as_device_read(device, user_map) for device in devices]
 

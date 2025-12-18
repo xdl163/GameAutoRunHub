@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.models import RoleEnum, TaskGroup, User
+from app.models import RoleEnum, TaskGroup, User, Task
 from app.repository import (
     group_authorization_repository,
     task_group_repository,
@@ -59,11 +59,25 @@ def _attach_owner_meta(db: Session, groups: list[TaskGroup]) -> list[TaskGroup]:
     return groups
 
 
+def _attach_task_counts(db: Session, groups: list[TaskGroup]) -> list[TaskGroup]:
+    if not groups:
+        return groups
+    group_ids = [g.id for g in groups]
+    counts = (
+        db.execute(select(Task.group_id, func.count()).where(Task.group_id.in_(group_ids)).group_by(Task.group_id))
+        .all()
+    )
+    count_map = {gid: cnt for gid, cnt in counts}
+    for g in groups:
+        g.task_count = int(count_map.get(g.id, 0))
+    return groups
+
+
 def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
     default_group, completed_group = ensure_user_default_groups(db, owner=requester)
     if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        return _attach_owner_meta(db, task_group_repository.list_all(db))
-
+        groups = task_group_repository.list_all(db)
+        return _attach_task_counts(db, _attach_owner_meta(db, groups))
     authorized_ids = group_authorization_repository.list_group_ids_for_user(db, user_id=requester.id)
     groups = task_group_repository.list_owned_or_authorized(
         db, owner_id=requester.id, authorized_group_ids=authorized_ids
@@ -74,7 +88,7 @@ def list_groups(db: Session, *, requester: User) -> list[TaskGroup]:
         groups.insert(0, default_group)
     if completed_group.id not in ensured_ids:
         groups.insert(1, completed_group)
-    return _attach_owner_meta(db, groups)
+    return _attach_task_counts(db, _attach_owner_meta(db, groups))
 
 
 def create_group(
@@ -87,9 +101,9 @@ def create_group(
 ) -> TaskGroup:
     ensure_user_default_groups(db, owner=requester)
 
-    target_owner_id = requester.id if owner_id is None else owner_id
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and target_owner_id != requester.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="普通用户只能创建自己的分组")
+    target_owner_id = requester.id
+    if owner_id not in {None, requester.id}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只能创建自己的分组")
 
     owner = user_repository.get_by_id(db, target_owner_id)
     if not owner:
@@ -116,7 +130,7 @@ def add_managers(
     group = task_group_repository.get_by_id(db, group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+    if group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权变更分组管理员")
 
     valid_ids: list[int] = []
@@ -135,7 +149,7 @@ def delete_group(db: Session, *, requester: User, group_id: int) -> TaskGroup:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
     if group.is_default:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="默认分组不可删除")
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+    if group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权删除分组")
 
     default_group, _ = ensure_user_default_groups(db, owner=group.created_by)

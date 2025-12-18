@@ -41,7 +41,7 @@ def _ensure_group_access(db: Session, *, requester: User, group_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
     if group.name == "已完成":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已完成分组不可创建新任务")
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
+    if group.created_by != requester.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权在该分组下创建任务")
     return group
 
@@ -75,6 +75,8 @@ def _update_device_binding(
     new_device = device_repository.get_by_id(db, device_id)
     if not new_device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+    if new_device.created_by != performer.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权绑定该设备")
     if new_device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     new_device.status = DeviceStatusEnum.RUNNING
@@ -120,6 +122,8 @@ def create_task(
     device = device_repository.get_by_id(db, device_id)
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="设备不存在")
+    if device.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权绑定该设备")
     if device.status != DeviceStatusEnum.IDLE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设备当前不可用")
     settings = config.get_settings()
@@ -179,19 +183,10 @@ def list_tasks(
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
 ) -> list[Task]:
-    if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        group_ids = [group_id] if group_id else None
-        return task_repository.list_tasks(
-            db,
-            group_ids=group_ids or [],
-            include_all=False,
-            task_type=task_type,
-            status=status,
-        )
-
     accessible_group_ids = task_group_service.resolve_accessible_group_ids(db, requester=requester)
-    if group_id and group_id not in accessible_group_ids:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该分组任务")
+    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
+        if group_id and group_id not in accessible_group_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该分组任务")
 
     target_groups = accessible_group_ids if group_id is None else [group_id]
     return task_repository.list_tasks(
@@ -246,9 +241,8 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     if action == "terminate":
         task.status = TaskStatusEnum.TERMINATED
         task.end_time = now
-        if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} and group.created_by != requester.id:
-            _, completed_group = task_group_service.ensure_user_default_groups(db, owner=group.created_by)
-            task.group_id = completed_group.id
+        _, completed_group = task_group_service.ensure_user_default_groups(db, owner=group.created_by)
+        task.group_id = completed_group.id
         _update_device_binding(db, performer=requester, task=task, device_id=None, action="unbind_task")
 
     saved = task_repository.save(db, task)
@@ -371,11 +365,10 @@ def move_group(db: Session, *, requester: User, task_id: int, target_group_id: i
     if not source_group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
 
-    if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        if source_group.created_by != requester.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权移动该分组下的任务")
-        if group.created_by != requester.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权将任务移动到目标分组")
+    if source_group.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权移动该分组下的任务")
+    if group.created_by != requester.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权将任务移动到目标分组")
 
     task.group_id = target_group_id
     saved = task_repository.save(db, task)
