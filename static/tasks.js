@@ -1,5 +1,5 @@
 (function () {
-  const { initConsoleShell, loadTaskState, saveTaskState, appendTaskLog } = window.ConsoleShared;
+  const { initConsoleShell, loadTaskState, saveTaskState, appendTaskLog, apiFetch } = window.ConsoleShared;
 
   let taskState = loadTaskState();
   let currentGroupId = "all";
@@ -13,6 +13,8 @@
   let manageAccessSelection = [];
   let userOptions = [];
   let userLoadPromise = null;
+  const deviceOptionsCache = new Map();
+  const deviceLoadPromises = new Map();
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -70,6 +72,39 @@
     }
     await userLoadPromise;
     return userOptions;
+  }
+
+  async function loadDeviceOptions(keyword = "") {
+    const key = keyword.trim().toLowerCase();
+    let list = [];
+    try {
+      const query = key ? `?q=${encodeURIComponent(key)}` : "";
+      const resp = await apiFetch(`/api/devices/options${query}`);
+      if (!resp.ok) throw new Error(`加载设备失败 ${resp.status}`);
+      list = await resp.json();
+    } catch (err) {
+      console.warn("加载设备列表失败，使用本地任务中的设备ID降级", err);
+      const fallbackIds = Array.from(new Set(taskState.tasks.map((t) => t.device_id).filter(Boolean)));
+      list = fallbackIds.map((id, idx) => ({ id: idx + 1, device_id: id, status: "idle" }));
+    }
+    deviceOptionsCache.set(key, list);
+    return list;
+  }
+
+  async function ensureDeviceOptions(keyword = "") {
+    const key = keyword.trim().toLowerCase();
+    if (deviceOptionsCache.has(key)) return deviceOptionsCache.get(key);
+
+    if (!deviceLoadPromises.has(key)) {
+      deviceLoadPromises.set(
+        key,
+        loadDeviceOptions(key).finally(() => {
+          deviceLoadPromises.delete(key);
+        }),
+      );
+    }
+    const list = await deviceLoadPromises.get(key);
+    return list || [];
   }
 
   function fmtDate(iso) {
@@ -408,26 +443,25 @@
     return taskState.groups.find((g) => g.id === id)?.name || "未知分组";
   }
 
-  function getDeviceCandidates() {
-    const unique = new Set(taskState.tasks.map((t) => t.device_id).filter(Boolean));
-    return Array.from(unique);
-  }
-
-  function bindSuggest(inputSelector, listSelector) {
+  function bindDeviceSuggest(inputSelector, listSelector) {
     const input = document.querySelector(inputSelector);
     const list = document.querySelector(listSelector);
     if (!input || !list) return;
-    const render = () => {
+    const render = async () => {
       const keyword = input.value.trim();
-      const candidates = getDeviceCandidates().filter((id) => id.toLowerCase().includes(keyword.toLowerCase()));
-      if (!keyword || !candidates.length) {
+      const options = await ensureDeviceOptions(keyword);
+      const filtered = options.filter((item) =>
+        (item.device_id || "").toLowerCase().includes(keyword.toLowerCase()),
+      );
+      const display = filtered.length ? filtered : options;
+      if (!display.length) {
         list.classList.remove("active");
         list.innerHTML = "";
         return;
       }
-      list.innerHTML = candidates
+      list.innerHTML = display
         .slice(0, 8)
-        .map((id) => `<div class="suggestion-item" data-id="${id}">${id}</div>`)
+        .map((item) => `<div class="suggestion-item" data-id="${item.device_id}">${item.device_id}</div>`)
         .join("");
       list.classList.add("active");
     };
@@ -947,8 +981,8 @@
       closeModal("#access-modal");
     });
     bindModalClose();
-    bindSuggest("#task-device", "#task-device-suggest");
-    bindSuggest("#edit-device", "#edit-device-suggest");
+    bindDeviceSuggest("#task-device", "#task-device-suggest");
+    bindDeviceSuggest("#edit-device", "#edit-device-suggest");
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
@@ -956,6 +990,7 @@
     if (!currentUser) return;
 
     await ensureUserOptionsLoaded();
+    await ensureDeviceOptions("");
     populateGroupSelects();
     renderOwnerFilter();
     renderStatusFilter();

@@ -514,6 +514,19 @@ async def list_devices(
 
 
 @router.get(
+    "/devices/options",
+    response_model=List[DeviceRead],
+    summary="设备选择列表",
+    dependencies=[Depends(get_current_user)],
+)
+async def list_device_options(q: str | None = None, idle_only: bool = False, current=Depends(get_current_user), db=Depends(get_db)):
+    user: User = current["user"]
+    devices = device_service.list_devices(db, requester=user, device_id=q, idle_only=idle_only)
+    user_map = _build_user_map(db, devices)
+    return [_as_device_read(device, user_map) for device in devices]
+
+
+@router.get(
     "/devices/idle",
     response_model=List[DeviceRead],
     summary="查看空闲设备",
