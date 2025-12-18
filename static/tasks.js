@@ -1010,23 +1010,37 @@
     });
   }
 
-  function createGroup() {
+  async function createGroup() {
     const name = document.querySelector("#group-name").value.trim();
     const desc = document.querySelector("#group-desc").value.trim();
     if (!name) {
       alert("请输入分组名称");
       return;
     }
-    const newGroup = {
-      id: `g-${Date.now()}`,
-      name,
-      description: desc,
-      owner: currentUser.username,
-      is_default: false,
-    };
-    taskState.groups.push(newGroup);
-    closeModal("#group-modal");
-    saveStateAndRender();
+    try {
+      const resp = await apiFetch("/api/task-groups", {
+        method: "POST",
+        body: JSON.stringify({ name, description: desc }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || `创建分组失败 ${resp.status}`);
+      }
+      const data = await resp.json();
+      const newGroup = {
+        id: String(data.id ?? `g-${Date.now()}`),
+        name: data.name || name,
+        description: data.description ?? desc,
+        owner: currentUser.username,
+        is_default: Boolean(data.is_default),
+      };
+      taskState.groups.push(newGroup);
+      closeModal("#group-modal");
+      saveStateAndRender();
+    } catch (err) {
+      console.warn("创建分组失败", err);
+      alert(err.message || "创建分组失败，请稍后重试");
+    }
   }
 
   async function createTask() {
