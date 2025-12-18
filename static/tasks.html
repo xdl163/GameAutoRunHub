@@ -47,29 +47,31 @@
             </aside>
 
             <section class="task-main">
-              <div class="card filters-card">
-                <div class="filter-row">
-                  <div class="field inline" id="owner-filter-field">
-                    <span>查看范围</span>
-                    <select id="owner-filter">
-                      <option value="all">全部员工</option>
-                    </select>
+              <div class="task-main-scroll">
+                <div class="card filters-card">
+                  <div class="filter-row">
+                    <div class="field inline" id="owner-filter-field">
+                      <span>查看范围</span>
+                      <select id="owner-filter">
+                        <option value="all">全部员工</option>
+                      </select>
+                    </div>
+                    <div class="field inline">
+                      <span>排序</span>
+                      <select id="task-sort">
+                        <option value="updated_desc">按更新时间（新→旧）</option>
+                        <option value="status">按状态</option>
+                        <option value="type">按类型</option>
+                        <option value="start_time">按开始时间</option>
+                      </select>
+                    </div>
+                    <div class="pill-group" id="status-filter"></div>
+                    <div class="pill-group" id="type-filter"></div>
                   </div>
-                  <div class="field inline">
-                    <span>排序</span>
-                    <select id="task-sort">
-                      <option value="updated_desc">按更新时间（新→旧）</option>
-                      <option value="status">按状态</option>
-                      <option value="type">按类型</option>
-                      <option value="start_time">按开始时间</option>
-                    </select>
-                  </div>
-                  <div class="pill-group" id="status-filter"></div>
-                  <div class="pill-group" id="type-filter"></div>
                 </div>
-              </div>
 
-              <div class="task-grid" id="task-grid"></div>
+                <div class="task-grid" id="task-grid"></div>
+              </div>
             </section>
           </div>
         </section>
