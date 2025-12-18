@@ -8,7 +8,7 @@
   let currentType = "all";
   let currentUser = null;
   let selectedTaskId = null;
-  let currentType = "all";
+  let selectedGroupId = null;
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -406,6 +406,15 @@
     return taskState.tasks.find((t) => t.id === selectedTaskId);
   }
 
+  function setSelectedGroup(group) {
+    selectedGroupId = group?.id ?? null;
+    return selectedGroupId;
+  }
+
+  function getSelectedGroup() {
+    return taskState.groups.find((g) => g.id === selectedGroupId);
+  }
+
   function openPatchModal(task) {
     setSelectedTask(task);
     document.querySelector("#patch-task-name").textContent = `当前任务：${task.name}`;
@@ -444,6 +453,14 @@
         .join("");
     }
     openModal("#move-modal");
+  }
+
+  function openGroupManageModal(group) {
+    setSelectedGroup(group);
+    document.querySelector("#manage-group-name").value = group.name || "";
+    document.querySelector("#manage-group-desc").value = group.description || "";
+    document.querySelector("#manage-group-access").value = (group.accessors || []).join(",");
+    openModal("#group-manage-modal");
   }
 
   function applyPatch(task, addPoints, addHours) {
@@ -566,8 +583,8 @@
   }
 
   function deleteGroup(groupId) {
-    ensureDefaultGroup();
-    const defaultGroup = taskState.groups.find((g) => g.is_default) || taskState.groups[0];
+    ensureDefaultGroups();
+    const defaultGroup = taskState.groups.find((g) => g.id === "g-default" && g.is_default) || taskState.groups[0];
     taskState.tasks = taskState.tasks.map((task) => (task.group_id === groupId ? { ...task, group_id: defaultGroup.id } : task));
     taskState.groups = taskState.groups.filter((g) => g.id !== groupId);
     saveStateAndRender();
@@ -760,6 +777,21 @@
         applyMove(task, target);
       }
       closeModal("#move-modal");
+    });
+    document.querySelector("#submit-group-manage")?.addEventListener("click", () => {
+      const group = getSelectedGroup();
+      if (!group) return;
+      group.name = document.querySelector("#manage-group-name").value.trim() || group.name;
+      group.description = document.querySelector("#manage-group-desc").value.trim();
+      const access = document
+        .querySelector("#manage-group-access")
+        .value.split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+      group.accessors = access;
+      group.updated_at = new Date().toISOString();
+      saveStateAndRender();
+      closeModal("#group-manage-modal");
     });
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
