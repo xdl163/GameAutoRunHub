@@ -169,6 +169,7 @@ def create_task(
             task_id=task.id,
             point_rate=score_detail.get("point_rate") if score_detail else settings.default_score_rate,
             target_points=score_detail.get("target_points") if score_detail else 360000,
+            current_points=score_detail.get("current_points") if score_detail else 0,
         )
     if task_type is TaskTypeEnum.MULTIPLIER:
         initial_multiplier_value = None
@@ -177,14 +178,14 @@ def create_task(
         initial_multiplier_value = 1.0 if initial_multiplier_value is None else float(initial_multiplier_value)
         task.multiplier_detail = MultiplierTaskDetail(
             task_id=task.id,
-            duration_hours=multiplier_detail.get("duration_hours") if multiplier_detail else 0,
+            duration_hours=(multiplier_detail.get("duration_hours") if multiplier_detail else 0)*3600,
             initial_multiplier=initial_multiplier_value,
             current_multiplier=multiplier_detail.get("current_multiplier") if multiplier_detail else settings.default_multiplier,
         )
     if task_type is TaskTypeEnum.CHEST:
         task.chest_detail = ChestTaskDetail(
             task_id=task.id,
-            duration_hours=chest_detail.get("duration_hours") if chest_detail else 0,
+            duration_hours=(chest_detail.get("duration_hours") if chest_detail else 0)*3600,
         )
 
     _update_device_binding(db, performer=requester, task=task, device_id=device_id, action="bind_task")
@@ -253,9 +254,25 @@ def update_status(db: Session, *, requester: User, task_id: int, action: str) ->
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务分组不存在")
 
-    if action in {"start", "resume"}:
+    if action == "start":
         task.status = TaskStatusEnum.RUNNING
         task.start_time = task.start_time or now
+        task.paused_at = None
+
+    elif action == "resume":
+        task.status = TaskStatusEnum.RUNNING
+
+        # 如果存在暂停时间点，累计暂停秒数
+        if task.paused_at:
+            paused_at = task.paused_at
+
+            # DB 取出来是 naive，就当作 CN_TZ
+            if paused_at.tzinfo is None:
+                paused_at = paused_at.replace(tzinfo=CN_TZ)
+
+            delta = now - paused_at
+            task.paused_seconds = (task.paused_seconds or 0) + int(delta.total_seconds())
+
         task.paused_at = None
     if action == "pause":
         task.status = TaskStatusEnum.PAUSED
@@ -287,7 +304,7 @@ def patch_task(
     requester: User,
     task_id: int,
     add_points: int | None = None,
-    add_hours: int | None = None,
+    add_hours: int | None = None,#是分钟，不是小时
 ) -> Task:
     task = task_repository.get_by_id(db, task_id)
     if not task:
@@ -300,14 +317,18 @@ def patch_task(
 
     detail_msg = []
     if task.task_type is TaskTypeEnum.SCORE and add_points:
-        task.score_detail.current_points = int(task.score_detail.current_points or 0) + add_points
+        task.score_detail.target_points = int(task.score_detail.target_points or 0) + add_points
         detail_msg.append(f"补充积分 {add_points}")
+    if task.task_type is TaskTypeEnum.SCORE and add_hours:
+
+        task.score_detail.target_points = int(task.score_detail.target_points or 0) + add_hours*task.score_detail.point_rate/60
+        detail_msg.append(f"补充时长 {add_hours} 分钟")
     if task.task_type in {TaskTypeEnum.MULTIPLIER, TaskTypeEnum.CHEST} and add_hours:
         if task.task_type is TaskTypeEnum.MULTIPLIER:
-            task.multiplier_detail.duration_hours = int(task.multiplier_detail.duration_hours or 0) + add_hours
+            task.multiplier_detail.duration_hours = int(task.multiplier_detail.duration_hours or 0) + add_hours*60
         else:
-            task.chest_detail.duration_hours = int(task.chest_detail.duration_hours or 0) + add_hours
-        detail_msg.append(f"补充时长 {add_hours} 小时")
+            task.chest_detail.duration_hours = int(task.chest_detail.duration_hours or 0) + add_hours*60
+        detail_msg.append(f"补充时长 {add_hours} 分钟")
 
     saved = task_repository.save(db, task)
     if detail_msg:
@@ -349,7 +370,7 @@ def update_detail(
             changes.append(f"积分速率调整为 {score_rate}")
     if task.task_type is TaskTypeEnum.MULTIPLIER and task.multiplier_detail:
         if multiplier_hours is not None:
-            task.multiplier_detail.duration_hours = int(multiplier_hours)
+            task.multiplier_detail.duration_hours = int(multiplier_hours)*3600
             changes.append(f"时长调整为 {multiplier_hours} 小时")
         if multiplier_initial is not None:
             task.multiplier_detail.initial_multiplier = float(multiplier_initial)
@@ -359,7 +380,7 @@ def update_detail(
             changes.append(f"当前倍率调整为 {multiplier_increment}")
     if task.task_type is TaskTypeEnum.CHEST and task.chest_detail:
         if chest_hours is not None:
-            task.chest_detail.duration_hours = int(chest_hours)
+            task.chest_detail.duration_hours = int(chest_hours)*3600
             changes.append(f"时长调整为 {chest_hours} 小时")
 
     if not changes:

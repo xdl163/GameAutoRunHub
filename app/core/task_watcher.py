@@ -28,6 +28,7 @@ def _start_time_with_offset(task) -> Optional[datetime]:
 
 def _finish_time_for_task(task) -> Optional[datetime]:
     start = _start_time_with_offset(task)
+
     if not start:
         return None
     paused_seconds = max(int(getattr(task, "paused_seconds", 0) or 0), 0)
@@ -42,11 +43,11 @@ def _finish_time_for_task(task) -> Optional[datetime]:
         return start + timedelta(seconds=paused_seconds + duration_seconds)
 
     if task.task_type is TaskTypeEnum.MULTIPLIER and getattr(task, "multiplier_detail", None):
-        duration_seconds = max(int(task.multiplier_detail.duration_hours or 0), 0) * 3600
+        duration_seconds = max(int(task.multiplier_detail.duration_hours or 0), 0)
         return start + timedelta(seconds=paused_seconds + duration_seconds)
 
     if task.task_type is TaskTypeEnum.CHEST and getattr(task, "chest_detail", None):
-        duration_seconds = max(int(task.chest_detail.duration_hours or 0), 0) * 3600
+        duration_seconds = max(int(task.chest_detail.duration_hours or 0), 0)
         return start + timedelta(seconds=paused_seconds + duration_seconds)
 
     return None
@@ -57,6 +58,7 @@ def _remaining_seconds(task, now: datetime) -> float:
     if not finish:
         return float("inf")
     finish_utc = finish.astimezone(timezone.utc)
+
     return (finish_utc - now).total_seconds()
 
 
@@ -90,7 +92,8 @@ class TaskAutoCompletionWorker:
             self._stop_event.wait(CHECK_INTERVAL_SECONDS)
 
     def _tick(self):
-        now = datetime.now(timezone.utc)
+        # now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc) + timedelta(hours=8)
         db = SessionLocal()
         try:
             tasks = task_repository.list_tasks(db, status=TaskStatusEnum.RUNNING, include_all=True)

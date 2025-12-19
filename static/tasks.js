@@ -248,11 +248,14 @@
   }
 
   function calculatePausedSeconds(task, now = new Date()) {
-    const basePaused = Number(task.paused_seconds || 0);
-    if (task.status !== "paused") return Math.max(basePaused, 0);
-    const pausedAt = parseDate(task.paused_at);
-    if (!pausedAt) return Math.max(basePaused, 0);
-    const extra = Math.max(Math.floor((now.getTime() - pausedAt.getTime()) / 1000), 0);
+
+    const basePaused = Number(task.paused_seconds);
+    // if (task.status !== "running " or ) return Math.max(basePaused, 0);
+    const pausedAtRaw = task?.paused_at;
+    const pausedAt = pausedAtRaw ? parseDate(pausedAtRaw) : null;
+    const extra = pausedAt
+        ? Math.max(Math.floor((now.getTime() - pausedAt.getTime()) / 1000), 0)
+        : 0;
     return Math.max(basePaused + extra, 0);
   }
 
@@ -298,64 +301,156 @@
   }
 
   function computeScoreMeta(task, now = new Date()) {
+    console.table(task)
     const detail = task.score || {};
-    const target = Number(detail.target_points || 0);
-    const baseCurrent = Number(detail.current_points || 0);
-    const rate = Number(detail.point_rate || 0) || 7000;
-    const ratePerSecond = rate / 3600;
+
+    const target = Number(detail.target_points || 0);        // 目标积分
+    const dbCurrent = Number(detail.current_points || 0);    // 数据库 current_points（你要求剩余时间用它）
+    const ratePerHour = Number(detail.point_rate || 0) || 7000;
+    const ratePerSecond = ratePerHour / 3600;
+
+    // 统一以 anchor 作为“当前时间”（进行中=now，已完成/终止=结束时间点）
     const anchor = anchorTime(task, now);
-    const activeSeconds = elapsedActiveSeconds(task, anchor);
-    const gained = ratePerSecond > 0 ? ratePerSecond * activeSeconds : 0;
-    const current = target > 0 ? Math.min(baseCurrent + gained, target) : baseCurrent + gained;
-    const remainingSeconds =
-      ratePerSecond > 0 && target > 0 ? Math.max(Math.ceil((target - current) / ratePerSecond), 0) : 0;
-    const end = new Date(anchor.getTime() + remainingSeconds * 1000);
-    if (["completed", "terminated"].includes(task.status)) {
-      return { target, current, rate, remainingSeconds: 0, end: anchor };
+
+    // 开始时间（包含你项目里的 +8h offset 逻辑）
+    const start = startTimeWithOffset(task, anchor);
+
+    // 暂停累计秒数（包含 paused_at 到 anchor 的增量）
+    const pausedSeconds = calculatePausedSeconds(task, anchor);
+    // console.log("[pausedSeconds]", {
+    //   taskId: task.id,
+    //   status: task.status,
+    //   pausedSeconds,
+    // });
+
+    // 有效运行秒数 = (anchor - start) - pausedSeconds
+    const elapsedSeconds = Math.max(Math.floor((anchor.getTime() - start.getTime()) / 1000), 0);
+    const effectiveSeconds = Math.max(elapsedSeconds - pausedSeconds, 0);
+
+    // 1) 当前积分（你要求：速率 * (当前时间 - 开始时间 - 暂停时长)，单位秒）
+    // 注意：这里得到的是“运行带来的增量”，通常要 + 基础积分
+    const gained = ratePerSecond > 0 ? ratePerSecond * effectiveSeconds : 0;
+    const runtimeCurrent = dbCurrent + gained; // 如果 dbCurrent 是“开始时积分/上次落库积分”，这样叠加才合理
+
+    const current = target > 0 ? Math.min(runtimeCurrent, target) : runtimeCurrent;
+
+    // 2) 剩余时间（你要求：用数据库 current_points 字段算）
+    // 剩余秒数 = (目标 - 数据库当前积分) / 每秒速率
+    // 这里严格按你要求使用 dbCurrent，而不是上面实时算出来的 current
+    let remainingSeconds = 0;
+    if (ratePerSecond > 0 && target > 0) {
+      const remainPoints = Math.max(target - current, 0);
+      remainingSeconds = Math.max(Math.ceil(remainPoints / ratePerSecond), 0);
     }
-    return {
-      target,
-      current,
-      rate,
-      remainingSeconds,
-      end,
-    };
+
+
+    // 3) 预计结束时间 = 当前时间 + 剩余时间
+    const end = new Date(anchor.getTime() + remainingSeconds * 1000);
+
+    // 已完成/终止：锁定结束
+    if (["completed", "terminated"].includes(task.status)) {
+      return { target, current, rate: ratePerHour, remainingSeconds: 0, end: anchor };
+    }
+
+    return { target, current, rate: ratePerHour, remainingSeconds, end };
   }
+
 
   function computeMultiplierMeta(task, now = new Date()) {
     const detail = task.multiplier || {};
-    const duration = Number(detail.duration_hours || 0);
-    const durationSeconds = duration * 3600;
+
+    const durationSeconds = Number(detail.duration_hours || 0);
+    const durationHours = Math.round((durationSeconds / 3600) * 100) / 100;
+
+    // 2) anchor：进行中=now，完成/终止=结束时刻（你已有 anchorTime 逻辑）
     const anchor = anchorTime(task, now);
-    const activeSeconds = elapsedActiveSeconds(task, anchor);
-    const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
+
+    // 3) 开始时间（含你项目里的 +8h offset）
+    const start = startTimeWithOffset(task, anchor);
+
+    // 4) 暂停累计秒数（paused_seconds + paused_at 增量，仅当 paused_at 有值且可解析时）
+    const pausedSeconds = calculatePausedSeconds(task, anchor);
+
+    // 5) 经过秒数（从开始到当前）
+    const elapsedSeconds = Math.max(Math.floor((anchor.getTime() - start.getTime()) / 1000), 0);
+
+    // 6) 有效运行秒数 = 经过 - 暂停
+    const effectiveSeconds = Math.max(elapsedSeconds - pausedSeconds, 0);
+
+    // --- 按你给的公式 ---
+    // 剩余时间 = 开始时间 + 暂停时长 + 时长 - 当前时间
+    // 变形到秒：remainingSeconds = durationSeconds + pausedSeconds - elapsedSeconds
+    const remainingSeconds = Math.max(durationSeconds + pausedSeconds - elapsedSeconds, 0);
+
+    // 预计结束时间：当前时间 + 剩余时间（保持你现有展示逻辑）
     const end = new Date(anchor.getTime() + remainingSeconds * 1000);
+
+    // 初始倍率（保持原逻辑）
     const hasInitialMultiplier =
-      detail.initial_multiplier !== undefined &&
-      detail.initial_multiplier !== null &&
-      Number.isFinite(Number(detail.initial_multiplier));
+        detail.initial_multiplier !== undefined &&
+        detail.initial_multiplier !== null &&
+        Number.isFinite(Number(detail.initial_multiplier));
     const initialMultiplier = hasInitialMultiplier ? Number(detail.initial_multiplier) : 1;
+
+    // 倍率增长（你要求：*(倍率增长)，这里按“每秒增长值”理解）
     const growthPerSecond = Number(detail.current_multiplier ?? 0);
-    const currentMultiplier = initialMultiplier + activeSeconds * growthPerSecond;
+
+    // 当前倍率 = （当前时间 - 开始时间 - 暂停时长） * 倍率增长
+    // 如果你希望“从 initialMultiplier 起算”，改成：initialMultiplier + effectiveSeconds * growthPerSecond
+    const currentMultiplier = effectiveSeconds * growthPerSecond;
+
     if (["completed", "terminated"].includes(task.status)) {
-      return { duration, end: anchor, remainingSeconds: 0, currentMultiplier, initialMultiplier, growthPerSecond };
+      return {
+        duration: durationHours,
+        end: anchor,
+        remainingSeconds: 0,
+        currentMultiplier,
+        initialMultiplier,
+        growthPerSecond,
+      };
     }
-    return { duration, end, remainingSeconds, currentMultiplier, initialMultiplier, growthPerSecond };
+
+    return {
+      duration: durationHours,
+      end,
+      remainingSeconds,
+      currentMultiplier,
+      initialMultiplier,
+      growthPerSecond,
+    };
   }
 
   function computeChestMeta(task, now = new Date()) {
     const detail = task.chest || {};
-    const duration = Number(detail.duration_hours || 0);
-    const durationSeconds = duration * 3600;
+
+    const durationSeconds = Number(detail.duration_hours || 0);
+    const durationHours = Math.round((durationSeconds / 3600) * 100) / 100;
+
+    // 2) anchor：进行中=now，完成/终止=结束时刻
     const anchor = anchorTime(task, now);
-    const activeSeconds = elapsedActiveSeconds(task, anchor);
-    const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
+
+    // 3) 开始时间：后台时间 +8小时（你项目里已有 startTimeWithOffset）
+    const start = startTimeWithOffset(task, anchor);
+
+    // 4) 暂停累计秒数（paused_seconds + paused_at 增量）
+    const pausedSeconds = calculatePausedSeconds(task, anchor);
+
+    // 5) 经过秒数 = 当前时间 - 开始时间
+    const elapsedSeconds = Math.max(Math.floor((anchor.getTime() - start.getTime()) / 1000), 0);
+
+    // 6) 按你给的公式：剩余时间 = 开始时间 + 暂停时长 + 时长 - 当前时间
+    // 变形到秒：remainingSeconds = durationSeconds + pausedSeconds - elapsedSeconds
+    const remainingSeconds = Math.max(durationSeconds + pausedSeconds - elapsedSeconds, 0);
+
+    // 7) 预计结束时间 = 当前时间 + 剩余时间
     const end = new Date(anchor.getTime() + remainingSeconds * 1000);
+
     if (["completed", "terminated"].includes(task.status)) {
-      return { duration, end: anchor, remainingSeconds: 0 };
+      return { duration: durationHours, end: anchor, remainingSeconds: 0 };
     }
-    return { duration, end, remainingSeconds };
+    return { duration: durationHours, end, remainingSeconds };
   }
+
 
   function computeRemainingSeconds(task, now = new Date()) {
     if (!task) return Number.POSITIVE_INFINITY;
@@ -903,13 +998,20 @@
       document.querySelector("#edit-score-rate").value = task.score?.point_rate || 7000;
     }
     if (task.task_type === "multiplier") {
-      document.querySelector("#edit-multiplier-hours").value = task.multiplier?.duration_hours || 0;
+      const durationSeconds = Number(task.multiplier?.duration_hours || 0);
+      const durationHours = Math.round((durationSeconds / 3600) * 100) / 100; // 保留2位小数
+      document.querySelector("#edit-multiplier-hours").value = durationHours;
+
       document.querySelector("#edit-multiplier-initial").value = task.multiplier?.initial_multiplier ?? 1.0;
       document.querySelector("#edit-multiplier-current").value = task.multiplier?.current_multiplier || 1.0;
     }
+
     if (task.task_type === "chest") {
-      document.querySelector("#edit-chest-hours").value = task.chest?.duration_hours || 0;
+      const durationSeconds = Number(task.chest?.duration_hours || 0);
+      const durationHours = Math.round((durationSeconds / 3600) * 100) / 100; // 保留2位小数
+      document.querySelector("#edit-chest-hours").value = durationHours;
     }
+
     openModal("#edit-modal");
   }
 
@@ -1265,6 +1367,8 @@
     if (type === "score") {
       payload.score_point_rate = Number(document.querySelector("#task-score-rate").value || 7000);
       payload.score_target = Number(document.querySelector("#task-score-target").value || 360000);
+      payload.score_current = Number(document.querySelector("#task-score-current").value || 0);
+
     }
     if (type === "multiplier") {
       payload.multiplier_hours = Number(document.querySelector("#task-multiplier-duration").value || 0);

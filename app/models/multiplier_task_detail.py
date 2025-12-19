@@ -11,7 +11,7 @@ class MultiplierTaskDetail(Base):
 
     id = Column(Integer, primary_key=True, index=True, comment="自增主键")
     task_id = Column(Integer, ForeignKey("tasks.id"), unique=True, nullable=False, comment="关联任务ID")
-    duration_hours = Column(Integer, nullable=False, comment="累计时长（小时）")
+    duration_hours = Column(Integer, nullable=False, comment="累计时长（秒）")
     initial_multiplier = Column(Float, default=1.0, nullable=False, comment="初始倍率")
     current_multiplier = Column(Float, default=1.0, nullable=False, comment="当前倍率")
 

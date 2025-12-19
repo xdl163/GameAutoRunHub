@@ -25,6 +25,7 @@ class TaskCreate(BaseModel):
     start_time: datetime | None = None
     score_point_rate: int | None = None
     score_target: int | None = None
+    score_current: int | None = None
     multiplier_hours: int | None = None
     multiplier_initial: float | None = None
     multiplier_current: float | None = None
@@ -42,6 +43,8 @@ class TaskRead(BaseModel):
     created_by: int
     start_time: datetime | None
     end_time: datetime | None
+    paused_seconds: int | None
+    paused_at: datetime | None
     point_rate: Optional[int] = None
     target_points: Optional[int] = None
     current_points: Optional[int] = None
@@ -111,6 +114,8 @@ def _as_task_read(task) -> TaskRead:
         created_by=task.created_by,
         start_time=task.start_time,
         end_time=task.end_time,
+        paused_seconds=task.paused_seconds,
+        paused_at=task.paused_at,
         point_rate=point_rate,
         target_points=target_points,
         current_points=current_points,
@@ -174,7 +179,11 @@ async def create_task(payload: TaskCreate, current=Depends(get_current_user), db
         group_id=payload.group_id,
         device_id=payload.device_id,
         start_time=payload.start_time,
-        score_detail={"point_rate": payload.score_point_rate, "target_points": payload.score_target}
+        score_detail={
+            "point_rate": payload.score_point_rate,
+            "target_points": payload.score_target,
+            "current_points": payload.score_current,
+        }
         if payload.task_type == TaskTypeEnum.SCORE
         else None,
         multiplier_detail={
