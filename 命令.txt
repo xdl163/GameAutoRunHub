@@ -1,0 +1,11 @@
+构建镜像：
+docker build -t gameautorunhub:latest .
+
+启动服务（包含MySQL）：
+docker compose up -d
+
+查看日志：
+docker compose logs -f
+
+关闭并移除容器：
+docker compose down
