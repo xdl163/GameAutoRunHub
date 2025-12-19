@@ -34,7 +34,7 @@
     const deviceId = document.querySelector("#filter-device-id").value.trim();
     const taskIdRaw = document.querySelector("#filter-task-id").value.trim();
     const status = document.querySelector("#filter-status").value;
-    const creatorUsername = document.querySelector("#filter-username")?.value.trim();
+    const creatorUsername = document.querySelector("#filter-username")?.value || "";
 
     const taskId = Number.parseInt(taskIdRaw, 10);
 
@@ -301,53 +301,75 @@
     if (!option) return "";
     return option.display_name ? `${option.display_name}（${option.username}）` : option.username;
   }
+  function renderUsernameSelect(options) {
+    const select = document.querySelector("#filter-username");
+    if (!select) return;
 
-  function bindUsernameSuggest() {
-    const input = document.querySelector("#filter-username");
-    const list = document.querySelector("#username-suggest");
-    if (!input || !list) return;
+    const current = select.value; // 尽量保留当前选择
+    const list = Array.isArray(options) ? options : [];
 
-    const render = (options, keyword) => {
-      const trimmed = (keyword || "").trim().toLowerCase();
-      const filtered = options.filter((opt) => {
-        const uname = (opt.username || "").toLowerCase();
-        const display = (opt.display_name || "").toLowerCase();
-        return !trimmed || uname.includes(trimmed) || display.includes(trimmed);
-      });
-      const displayList = filtered.length ? filtered : options;
-      if (!displayList.length) {
-        list.classList.remove("active");
-        list.innerHTML = "";
-        return;
-      }
-      list.innerHTML = displayList
-        .slice(0, 8)
-        .map((opt) => `<div class="suggestion-item" data-username="${opt.username}">${formatUsername(opt)}</div>`)
+    select.innerHTML = `<option value="">全部用户</option>` + list
+        .map((opt) => {
+          const label = formatUsername(opt);
+          const value = opt.username || "";
+          return `<option value="${value}">${label}</option>`;
+        })
         .join("");
-      list.classList.add("active");
-    };
 
-    const refreshList = async () => {
-      const options = await ensureUserOptions();
-      render(options, input.value);
-    };
-
-    input.addEventListener("input", refreshList);
-    input.addEventListener("focus", refreshList);
-    input.addEventListener("blur", () => setTimeout(() => list.classList.remove("active"), 150));
-    list.addEventListener("click", (evt) => {
-      const target = evt.target;
-      const username = target?.dataset?.username;
-      if (!username) return;
-      input.value = username;
-      list.classList.remove("active");
-      pagination.page = 1;
-      refreshDevices();
-    });
+    // 还原之前的选择（如果仍存在）
+    if (current && list.some((x) => x.username === current)) {
+      select.value = current;
+    } else {
+      select.value = "";
+    }
   }
 
+  // function bindUsernameSuggest() {
+  //   const input = document.querySelector("#filter-username");
+  //   const list = document.querySelector("#username-suggest");
+  //   if (!input || !list) return;
+  //
+  //   const render = (options, keyword) => {
+  //     const trimmed = (keyword || "").trim().toLowerCase();
+  //     const filtered = options.filter((opt) => {
+  //       const uname = (opt.username || "").toLowerCase();
+  //       const display = (opt.display_name || "").toLowerCase();
+  //       return !trimmed || uname.includes(trimmed) || display.includes(trimmed);
+  //     });
+  //     const displayList = filtered.length ? filtered : options;
+  //     if (!displayList.length) {
+  //       list.classList.remove("active");
+  //       list.innerHTML = "";
+  //       return;
+  //     }
+  //     list.innerHTML = displayList
+  //       .slice(0, 8)
+  //       .map((opt) => `<div class="suggestion-item" data-username="${opt.username}">${formatUsername(opt)}</div>`)
+  //       .join("");
+  //     list.classList.add("active");
+  //   };
+  //
+  //   const refreshList = async () => {
+  //     const options = await ensureUserOptions();
+  //     render(options, input.value);
+  //   };
+  //
+  //   input.addEventListener("input", refreshList);
+  //   input.addEventListener("focus", refreshList);
+  //   input.addEventListener("blur", () => setTimeout(() => list.classList.remove("active"), 150));
+  //   list.addEventListener("click", (evt) => {
+  //     const target = evt.target;
+  //     const username = target?.dataset?.username;
+  //     if (!username) return;
+  //     input.value = username;
+  //     list.classList.remove("active");
+  //     pagination.page = 1;
+  //     refreshDevices();
+  //   });
+  // }
+
   function bindFilterShortcuts() {
-    const selectors = ["#filter-device-id", "#filter-username", "#filter-task-id"];
+    const selectors = ["#filter-device-id", "#filter-task-id"]; // 移除 #filter-username
     selectors.forEach((selector) => {
       const el = document.querySelector(selector);
       if (!el) return;
@@ -359,6 +381,14 @@
       });
     });
 
+    const usernameSelect = document.querySelector("#filter-username");
+    if (usernameSelect) {
+      usernameSelect.addEventListener("change", () => {
+        pagination.page = 1;
+        refreshDevices();
+      });
+    }
+
     const statusSelect = document.querySelector("#filter-status");
     if (statusSelect) {
       statusSelect.addEventListener("change", () => {
@@ -367,6 +397,7 @@
       });
     }
   }
+
 
   function renderPagination() {
     const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
@@ -385,13 +416,17 @@
     if (!currentUser) return;
 
     if (!canManage()) {
-      const usernameField = document.querySelector("#filter-username-field");
-      if (usernameField) usernameField.style.display = "none";
+      const usernameSelect = document.querySelector("#filter-username");
+      if (usernameSelect) usernameSelect.value = "";
+
     }
 
     if (canManage()) {
-      bindUsernameSuggest();
+      // 加载下拉选项
+      const options = await ensureUserOptions();
+      renderUsernameSelect(options);
     }
+
 
     bindEvents();
     bindFilterShortcuts();

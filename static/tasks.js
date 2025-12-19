@@ -398,7 +398,7 @@
 
     // 当前倍率 = （当前时间 - 开始时间 - 暂停时长） * 倍率增长
     // 如果你希望“从 initialMultiplier 起算”，改成：initialMultiplier + effectiveSeconds * growthPerSecond
-    const currentMultiplier = effectiveSeconds * growthPerSecond;
+    const currentMultiplier = initialMultiplier + effectiveSeconds * growthPerSecond;
 
     if (["completed", "terminated"].includes(task.status)) {
       return {
@@ -855,23 +855,23 @@
     `;
     }
 
-    // 挂机倍率：前倍率 + 预计结束（不要秒）
+    // 挂机倍率：实时倍率 + 预计结束（不要秒）
     if (task.task_type === "multiplier") {
       const meta = computeMultiplierMeta(task, now);
-      const prev = Number.isFinite(meta.initialMultiplier) ? meta.initialMultiplier : 1;
+      const cur = Number(meta.currentMultiplier || 0);
+
       return `
-      <div class="task-line3 task-kv-row">
-        <div class="task-kv">
-<!--          <span class="muted mini">前倍率</span>-->
-          <strong>${prev.toFixed(2)}</strong>
-        </div>
-        <div class="task-kv">
-<!--          <span class="muted mini">预计结束</span>-->
-          <strong data-field="end-time" data-task-id="${task.id}">${fmtDateNoSeconds(meta.end)}</strong>
-        </div>
+    <div class="task-line3 task-kv-row">
+      <div class="task-kv">
+        <strong data-field="current-multiplier" data-task-id="${task.id}">${cur.toFixed(2)}</strong>
       </div>
-    `;
+      <div class="task-kv">
+        <strong data-field="end-time" data-task-id="${task.id}">${fmtDateNoSeconds(meta.end)}</strong>
+      </div>
+    </div>
+  `;
     }
+
 
     return "";
   }
@@ -898,8 +898,10 @@
 
       if (task.task_type === "multiplier") {
         const meta = computeMultiplierMeta(task, now);
+        setText("current-multiplier", Number(meta.currentMultiplier || 0).toFixed(2));
         setText("end-time", fmtDateNoSeconds(meta.end));
       }
+
 
       if (task.task_type === "chest") {
         const meta = computeChestMeta(task, now);
