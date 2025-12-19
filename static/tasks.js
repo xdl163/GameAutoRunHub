@@ -465,52 +465,105 @@
     ensureDefaultGroups();
     const list = document.querySelector("#group-list");
     if (!list) return;
+
     let groups = taskState.groups || [];
     const isAdmin = ["admin", "super_admin"].includes(currentUser.role);
+
+    // 管理员按“查看范围”过滤分组
     if (isAdmin && currentOwner !== "all") {
       groups = groups.filter((g) => (g.owner_username || g.owner) === currentOwner);
     }
+
+    // ===== 全部任务按钮 =====
     const allBtn = document.createElement("button");
-    allBtn.className = `group-item ${currentGroupId === "all" ? "active" : ""}`;
-    allBtn.innerHTML = `<div><strong>全部任务</strong><p class="muted">查看所有分组</p></div><span class="badge">${taskState.tasks.length}</span>`;
+    const allActive = currentGroupId === "all";
+    allBtn.className = `group-item ${allActive ? "active" : ""}`;
+
+    allBtn.innerHTML = `
+    <div class="group-content">
+      <div class="group-row1">
+        <strong class="group-title">全部任务</strong>
+        <span class="badge group-count">${taskState.tasks.length}</span>
+      </div>
+      ${
+        allActive
+            ? `<div class="group-row3"><p class="muted group-desc">查看所有分组</p></div>`
+            : ``
+    }
+    </div>
+  `;
+
     allBtn.addEventListener("click", () => {
       currentGroupId = "all";
       loadTasksFromServer("all");
     });
+
     list.innerHTML = "";
     list.appendChild(allBtn);
 
+    // ===== 分组按钮列表 =====
     groups.forEach((group) => {
       const count = Number.isFinite(Number(group.task_count))
-        ? Number(group.task_count)
-        : taskState.tasks.filter((t) => t.group_id === group.id).length;
+          ? Number(group.task_count)
+          : taskState.tasks.filter((t) => t.group_id === group.id).length;
+
       const button = document.createElement("button");
-      button.className = `group-item ${currentGroupId === group.id ? "active" : ""}`;
+      const active = currentGroupId === group.id;
+      button.className = `group-item ${active ? "active" : ""}`;
+
       const allowDelete = isOwnedGroup(group) && !group.is_default;
+
+      // 第二行：仅选中显示（管理/删除：按权限可选）
+      const actionsHtml = active
+          ? `
+        <div class="group-row2">
+          <div class="group-actions">
+            ${isOwnedGroup(group) ? '<button class="ghost mini" data-manage>管理</button>' : ""}
+            ${allowDelete ? '<button class="ghost mini danger" data-delete>删除</button>' : ""}
+          </div>
+        </div>
+      `
+          : "";
+
+      // 第三行：仅选中显示描述
+      const descText = group.description || "无描述";
+      const descHtml = active
+          ? `<div class="group-row3"><p class="muted group-desc">${descText}</p></div>`
+          : "";
+
+      // 第四行：所属（不显示“所属”字样）
+      const ownerHtml = `<div class="group-row4"><p class="muted mini group-owner">${formatOwnerDisplay(group)}</p></div>`;
+
+      // 第一行：组名 + 数量（数量始终靠右）
       button.innerHTML = `
-        <div>
-          <strong>${group.name}</strong>
-          <p class="muted">${group.description || "无描述"}</p>
-          <p class="muted mini">所属：${formatOwnerDisplay(group)}</p>
+      <div class="group-content">
+        <div class="group-row1">
+          <strong class="group-title">${group.name}</strong>
+          <span class="badge group-count">${count}</span>
         </div>
-        <div class="group-actions">
-          <span class="badge">${count}</span>
-          ${isOwnedGroup(group) ? '<button class="ghost mini" data-manage>管理</button>' : ""}
-          ${allowDelete ? '<button class="ghost mini danger" data-delete>删除</button>' : ""}
-        </div>
-      `;
+        ${actionsHtml}
+        ${descHtml}
+        ${ownerHtml}
+      </div>
+    `;
+
+      // 点击分组切换（点击管理/删除不触发切换）
       button.addEventListener("click", (evt) => {
-        if (evt.target?.dataset?.delete !== undefined || evt.target?.dataset?.manage !== undefined) return;
+        if (evt.target?.closest?.("[data-delete],[data-manage]")) return;
         currentGroupId = group.id;
         renderGroups();
         loadTasksFromServer(group.id);
       });
+
+      // 绑定“管理”
       if (isOwnedGroup(group)) {
         button.querySelector("[data-manage]")?.addEventListener("click", (evt) => {
           evt.stopPropagation();
           openGroupManageModal(group).catch((err) => console.warn("打开分组管理失败", err));
         });
       }
+
+      // 绑定“删除”
       if (allowDelete) {
         button.querySelector("[data-delete]")?.addEventListener("click", (evt) => {
           evt.stopPropagation();
@@ -518,6 +571,7 @@
           deleteGroup(group).catch((err) => console.warn("删除分组失败", err));
         });
       }
+
       list.appendChild(button);
     });
   }
