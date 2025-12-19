@@ -47,6 +47,13 @@ class DeviceRead(BaseModel):
         from_attributes = True
 
 
+class DeviceListResponse(BaseModel):
+    items: List[DeviceRead]
+    total: int
+    page: int
+    page_size: int
+
+
 def _build_user_map(db, devices: List):
     user_ids = {getattr(d, "created_by", None) for d in devices if getattr(d, "created_by", None)}
     if not user_ids:
@@ -73,7 +80,7 @@ def _as_device_read(device, user_map: Dict[int, str] | None = None) -> DeviceRea
 
 @router.get(
     "/devices",
-    response_model=List[DeviceRead],
+    response_model=DeviceListResponse,
     summary="查询设备列表",
     dependencies=[Depends(get_current_user)],
 )
@@ -83,11 +90,13 @@ async def list_devices(
     status: DeviceStatusEnum | None = None,
     idle_only: bool = False,
     username: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
     current=Depends(get_current_user),
     db=Depends(get_db),
 ):
     user: User = current["user"]
-    devices = device_service.list_devices(
+    devices, total = device_service.list_devices(
         db,
         requester=user,
         device_id=device_id,
@@ -96,9 +105,16 @@ async def list_devices(
         idle_only=idle_only,
         creator_username=username,
         owner_only=False,
+        page=page,
+        page_size=page_size,
     )
     user_map = _build_user_map(db, devices)
-    return [_as_device_read(device, user_map) for device in devices]
+    return DeviceListResponse(
+        items=[_as_device_read(device, user_map) for device in devices],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(
@@ -109,7 +125,9 @@ async def list_devices(
 )
 async def list_device_options(q: str | None = None, idle_only: bool = True, current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    devices = device_service.list_devices(db, requester=user, device_id=q, idle_only=True, owner_only=True)
+    devices, _ = device_service.list_devices(
+        db, requester=user, device_id=q, idle_only=idle_only, owner_only=True, page_size=200
+    )
     user_map = _build_user_map(db, devices)
     return [_as_device_read(device, user_map) for device in devices]
 
@@ -122,7 +140,7 @@ async def list_device_options(q: str | None = None, idle_only: bool = True, curr
 )
 async def list_idle_devices(current=Depends(get_current_user), db=Depends(get_db)):
     user: User = current["user"]
-    devices = device_service.list_devices(db, requester=user, idle_only=True, owner_only=True)
+    devices, _ = device_service.list_devices(db, requester=user, idle_only=True, owner_only=True, page_size=200)
     user_map = _build_user_map(db, devices)
     return [_as_device_read(device, user_map) for device in devices]
 

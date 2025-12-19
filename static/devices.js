@@ -17,6 +17,11 @@
   let currentUser = null;
   let editingId = null;
   let devicesCache = [];
+  const pagination = {
+    page: 1,
+    pageSize: 20,
+    total: 0,
+  };
   let userOptionsCache = [];
   let userOptionsPromise = null;
 
@@ -37,6 +42,8 @@
     if (!Number.isNaN(taskId)) params.set("task_id", taskId);
     if (status) params.set("status", status);
     if (creatorUsername && canManage()) params.set("username", creatorUsername);
+    params.set("page", pagination.page);
+    params.set("page_size", pagination.pageSize);
 
     const resp = await apiFetch(`/api/devices?${params.toString()}`);
     if (!resp.ok) {
@@ -49,7 +56,8 @@
   function updateSummary(devices) {
     const summary = document.querySelector("#device-summary");
     const idleCount = devices.filter((d) => d.status === "idle").length;
-    summary.textContent = `共 ${devices.length} 台设备，空闲 ${idleCount} 台`;
+    const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
+    summary.textContent = `共 ${pagination.total} 台设备，当前页 ${devices.length} 台，空闲 ${idleCount} 台（${pagination.page}/${totalPages} 页）`;
   }
 
   function renderDevices(devices) {
@@ -119,9 +127,12 @@
     rows.innerHTML = `<tr><td colspan="8" style="text-align:center" class="muted">加载中...</td></tr>`;
 
     try {
-      devicesCache = await fetchDevices();
+      const data = await fetchDevices();
+      devicesCache = data.items || [];
+      pagination.total = typeof data.total === "number" ? data.total : devicesCache.length;
       updateSummary(devicesCache);
       renderDevices(devicesCache);
+      renderPagination();
     } catch (err) {
       rows.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#d93025">${err.message}</td></tr>`;
     }
@@ -224,7 +235,10 @@
     document.querySelector("#open-create-modal").addEventListener("click", openCreateModal);
     document.querySelector("#close-create-modal").addEventListener("click", closeCreateModal);
     document.querySelector("#submit-create-device").addEventListener("click", handleCreate);
-    document.querySelector("#search-devices").addEventListener("click", refreshDevices);
+    document.querySelector("#search-devices").addEventListener("click", () => {
+      pagination.page = 1;
+      refreshDevices();
+    });
     document.querySelector("#reset-filters").addEventListener("click", () => {
       document.querySelector("#filter-device-id").value = "";
       document.querySelector("#filter-task-id").value = "";
@@ -236,10 +250,22 @@
         suggest.innerHTML = "";
         suggest.classList.remove("active");
       }
+      pagination.page = 1;
       refreshDevices();
     });
     document.querySelector("#close-device-modal").addEventListener("click", closeEditModal);
     document.querySelector("#save-device").addEventListener("click", handleUpdate);
+    document.querySelector("#prev-page")?.addEventListener("click", () => {
+      if (pagination.page <= 1) return;
+      pagination.page -= 1;
+      refreshDevices();
+    });
+    document.querySelector("#next-page")?.addEventListener("click", () => {
+      const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
+      if (pagination.page >= totalPages) return;
+      pagination.page += 1;
+      refreshDevices();
+    });
   }
 
   async function loadUserOptions() {
@@ -309,6 +335,7 @@
       if (!username) return;
       input.value = username;
       list.classList.remove("active");
+      pagination.page = 1;
       refreshDevices();
     });
   }
@@ -320,6 +347,7 @@
       if (!el) return;
       el.addEventListener("keydown", (evt) => {
         if (evt.key === "Enter") {
+          pagination.page = 1;
           refreshDevices();
         }
       });
@@ -327,8 +355,23 @@
 
     const statusSelect = document.querySelector("#filter-status");
     if (statusSelect) {
-      statusSelect.addEventListener("change", refreshDevices);
+      statusSelect.addEventListener("change", () => {
+        pagination.page = 1;
+        refreshDevices();
+      });
     }
+  }
+
+  function renderPagination() {
+    const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
+    const info = document.querySelector("#pagination-info");
+    if (info) {
+      info.textContent = `第 ${pagination.page} / ${totalPages} 页，共 ${pagination.total} 条`;
+    }
+    const prevBtn = document.querySelector("#prev-page");
+    const nextBtn = document.querySelector("#next-page");
+    if (prevBtn) prevBtn.disabled = pagination.page <= 1;
+    if (nextBtn) nextBtn.disabled = pagination.page >= totalPages;
   }
 
   document.addEventListener("DOMContentLoaded", async () => {

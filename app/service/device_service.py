@@ -55,6 +55,8 @@ def list_devices(
     idle_only: bool = False,
     creator_username: str | None = None,
     owner_only: bool = False,
+    page: int = 1,
+    page_size: int = 20,
 ):
     created_by = None
     username_filter = None
@@ -72,6 +74,8 @@ def list_devices(
         idle_only=idle_only,
         created_by=created_by,
         creator_username=username_filter,
+        page=page,
+        page_size=page_size,
     )
 
 

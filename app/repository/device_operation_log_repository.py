@@ -1,9 +1,9 @@
 """设备操作日志数据访问层。"""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
@@ -30,12 +30,20 @@ def create_log(
     return log
 
 
-def list_logs(db: Session, limit: int = 200) -> List[DeviceOperationLog]:
-    return db.scalars(
-        select(DeviceOperationLog)
-        .order_by(DeviceOperationLog.created_at.desc())
-        .limit(limit)
+def list_logs(db: Session, *, page: int = 1, page_size: int = 20) -> Tuple[List[DeviceOperationLog], int]:
+    page = max(page, 1)
+    page_size = max(min(page_size, 200), 1)
+
+    base_stmt = select(DeviceOperationLog)
+    total = db.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+
+    logs = db.scalars(
+        base_stmt.order_by(DeviceOperationLog.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
+
+    return logs, total
 
 
 def drop_user_fk_constraints(db: Session) -> None:
