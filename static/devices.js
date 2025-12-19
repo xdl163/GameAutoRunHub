@@ -55,9 +55,10 @@
 
   function updateSummary(devices) {
     const summary = document.querySelector("#device-summary");
-    const idleCount = devices.filter((d) => d.status === "idle").length;
+    const list = Array.isArray(devices) ? devices : [];
+    const idleCount = list.filter((d) => d.status === "idle").length;
     const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
-    summary.textContent = `共 ${pagination.total} 台设备，当前页 ${devices.length} 台，空闲 ${idleCount} 台（${pagination.page}/${totalPages} 页）`;
+    summary.textContent = `共 ${pagination.total} 台设备，当前页 ${list.length} 台，空闲 ${idleCount} 台（${pagination.page}/${totalPages} 页）`;
   }
 
   function renderDevices(devices) {
@@ -128,8 +129,13 @@
 
     try {
       const data = await fetchDevices();
-      devicesCache = data.items || [];
-      pagination.total = typeof data.total === "number" ? data.total : devicesCache.length;
+      if (Array.isArray(data)) {
+        devicesCache = data;
+        pagination.total = data.length;
+      } else {
+        devicesCache = Array.isArray(data?.items) ? data.items : [];
+        pagination.total = typeof data?.total === "number" ? data.total : devicesCache.length;
+      }
       updateSummary(devicesCache);
       renderDevices(devicesCache);
       renderPagination();

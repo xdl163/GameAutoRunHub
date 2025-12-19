@@ -22,7 +22,10 @@
     url.searchParams.set("page", page);
     url.searchParams.set("page_size", pageSize);
     const resp = await apiFetch(url.pathname + url.search);
-    if (!resp.ok) throw new Error("日志获取失败");
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || "日志获取失败");
+    }
     return resp.json();
   }
 
@@ -66,7 +69,7 @@
   async function refresh(endpoint) {
     try {
       const data = await fetchLogs(endpoint, state.page, state.pageSize);
-      const logs = Array.isArray(data) ? data : data?.items || [];
+      const logs = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
       state.total = typeof data?.total === "number" ? data.total : logs.length;
       renderLogs(logs);
       renderPagination();
