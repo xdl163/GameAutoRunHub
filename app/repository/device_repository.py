@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
@@ -26,7 +26,12 @@ def list_devices(
     idle_only: bool = False,
     created_by: int | None = None,
     creator_username: str | None = None,
-) -> List[Device]:
+    page: int = 1,
+    page_size: int = 20,
+) -> Tuple[List[Device], int]:
+    page = max(page, 1)
+    page_size = max(min(page_size, 200), 1)
+
     stmt = select(Device)
 
     if task_id is not None:
@@ -49,8 +54,18 @@ def list_devices(
     if idle_only:
         stmt = stmt.where(Device.status == DeviceStatusEnum.IDLE)
 
-    stmt = stmt.order_by(Device.updated_at.desc())
-    return db.scalars(stmt).unique().all()
+    stmt = stmt.distinct()
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = db.scalar(total_stmt) or 0
+
+    stmt = (
+        stmt.order_by(Device.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    devices = db.scalars(stmt).unique().all()
+    return devices, total
 
 
 def create_device(

@@ -37,12 +37,21 @@ def log_action(
     )
 
 
-def list_logs(db: Session, *, requester: User, task_ids: list[int] | None = None):
+def list_logs(
+    db: Session,
+    *,
+    requester: User,
+    task_ids: list[int] | None = None,
+    page: int = 1,
+    page_size: int = 20,
+):
     if requester.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
-        return task_operation_log_repository.list_logs(db)
+        return task_operation_log_repository.list_logs(db, page=page, page_size=page_size)
     if task_ids is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看所有任务日志")
-    return task_operation_log_repository.list_logs(db, task_ids=task_ids)
+    return task_operation_log_repository.list_logs(
+        db, task_ids=task_ids, page=page, page_size=page_size
+    )
 
 
 __all__ = ["log_action", "list_logs", "ALLOWED_ACTIONS"]

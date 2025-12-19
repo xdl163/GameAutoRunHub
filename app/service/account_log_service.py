@@ -40,10 +40,10 @@ def log_action(
     )
 
 
-def list_logs(db: Session, *, requester: User):
+def list_logs(db: Session, *, requester: User, page: int = 1, page_size: int = 20):
     if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限查看日志")
-    return account_log_repository.list_logs(db)
+    return account_log_repository.list_logs(db, page=page, page_size=page_size)
 
 
 __all__ = ["log_action", "list_logs"]

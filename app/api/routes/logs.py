@@ -33,15 +33,34 @@ class SimpleLogRead(BaseModel):
     performer_username: str
 
 
+class PaginatedAccountLogs(BaseModel):
+    items: List[AccountLogRead]
+    total: int
+    page: int
+    page_size: int
+
+
+class PaginatedSimpleLogs(BaseModel):
+    items: List[SimpleLogRead]
+    total: int
+    page: int
+    page_size: int
+
+
 @router.get(
     "/logs/account",
-    response_model=List[AccountLogRead],
+    response_model=PaginatedAccountLogs,
     summary="账户操作日志（管理员及以上）",
     dependencies=[Depends(get_current_user)],
 )
-async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db)):
+async def list_account_logs(
+    page: int = 1,
+    page_size: int = 20,
+    current=Depends(get_current_user),
+    db=Depends(get_db),
+):
     user: User = current["user"]
-    logs = account_log_service.list_logs(db, requester=user)
+    logs, total = account_log_service.list_logs(db, requester=user, page=page, page_size=page_size)
 
     user_ids = set()
     for log in logs:
@@ -55,36 +74,42 @@ async def list_account_logs(current=Depends(get_current_user), db=Depends(get_db
         fetched_users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
         user_map = {u.id: u.username for u in fetched_users}
 
-    results = []
-    for log in logs:
-        results.append(
-            AccountLogRead(
-                id=log.id,
-                action=log.action,
-                detail=log.detail,
-                created_at=log.created_at.isoformat(),
-                target_username=user_map.get(log.target_user_id, ""),
-                performer_username=user_map.get(log.performed_by, ""),
-            )
+    results = [
+        AccountLogRead(
+            id=log.id,
+            action=log.action,
+            detail=log.detail,
+            created_at=log.created_at.isoformat(),
+            target_username=user_map.get(log.target_user_id, ""),
+            performer_username=user_map.get(log.performed_by, ""),
         )
-    return results
+        for log in logs
+    ]
+    return PaginatedAccountLogs(items=results, total=total, page=page, page_size=page_size)
 
 
 @router.get(
     "/logs/task",
-    response_model=List[SimpleLogRead],
+    response_model=PaginatedSimpleLogs,
     summary="任务操作日志",
     dependencies=[Depends(get_current_user)],
 )
-async def list_task_logs(current=Depends(get_current_user), db=Depends(get_db)):
+async def list_task_logs(
+    page: int = 1,
+    page_size: int = 20,
+    current=Depends(get_current_user),
+    db=Depends(get_db),
+):
     user: User = current["user"]
     accessible_tasks = task_service.list_tasks(db, requester=user)
     task_ids = [t.id for t in accessible_tasks]
 
-    logs = task_log_service.list_logs(
+    logs, total = task_log_service.list_logs(
         db,
         requester=user,
         task_ids=None if user.role in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN} else task_ids,
+        page=page,
+        page_size=page_size,
     )
 
     user_ids = {log.user_id for log in logs}
@@ -93,27 +118,39 @@ async def list_task_logs(current=Depends(get_current_user), db=Depends(get_db)):
         fetched_users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
         user_map = {u.id: u.username for u in fetched_users}
 
-    return [
-        SimpleLogRead(
-            id=log.id,
-            action=log.action,
-            detail=log.detail,
-            created_at=log.created_at.isoformat(),
-            performer_username=user_map.get(log.user_id, ""),
-        )
-        for log in logs
-    ]
+    return PaginatedSimpleLogs(
+        items=[
+            SimpleLogRead(
+                id=log.id,
+                action=log.action,
+                detail=log.detail,
+                created_at=log.created_at.isoformat(),
+                performer_username=user_map.get(log.user_id, ""),
+            )
+            for log in logs
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(
     "/logs/device",
-    response_model=List[SimpleLogRead],
+    response_model=PaginatedSimpleLogs,
     summary="设备池操作日志（管理员及以上）",
     dependencies=[Depends(get_current_user)],
 )
-async def list_device_logs(current=Depends(get_current_user), db=Depends(get_db)):
+async def list_device_logs(
+    page: int = 1,
+    page_size: int = 20,
+    current=Depends(get_current_user),
+    db=Depends(get_db),
+):
     user: User = current["user"]
-    logs = device_operation_log_service.list_logs(db=db, requester=user)
+    logs, total = device_operation_log_service.list_logs(
+        db=db, requester=user, page=page, page_size=page_size
+    )
 
     results: List[SimpleLogRead] = []
     user_map = {}
@@ -132,4 +169,4 @@ async def list_device_logs(current=Depends(get_current_user), db=Depends(get_db)
                 performer_username=user_map.get(log.user_id, ""),
             )
         )
-    return results
+    return PaginatedSimpleLogs(items=results, total=total, page=page, page_size=page_size)

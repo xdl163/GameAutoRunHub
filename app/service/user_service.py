@@ -76,7 +76,7 @@ def _delete_user_resources(db: Session, target: User) -> None:
     db.commit()
 
     # 删除该用户创建的设备
-    devices = device_repository.list_devices(db, created_by=target.id)
+    devices, _ = device_repository.list_devices(db, created_by=target.id)
     for device in devices:
         for task in list(device.tasks or []):
             task.device_id = None
