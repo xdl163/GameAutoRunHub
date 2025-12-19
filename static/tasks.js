@@ -16,6 +16,7 @@
   const deviceOptionsCache = new Map();
   const deviceLoadPromises = new Map();
   let realtimeTimer = null;
+  const START_TIME_OFFSET_MS = 8 * 3600 * 1000;
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -122,6 +123,11 @@
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
   }
 
+  function parseDate(value) {
+    const d = value ? new Date(value) : null;
+    return d && !Number.isNaN(d.getTime()) ? d : null;
+  }
+
   function secondsToDisplay(seconds) {
     if (!Number.isFinite(seconds) || seconds <= 0) return "0秒";
     const total = Math.max(Math.floor(seconds), 0);
@@ -155,8 +161,8 @@
       start_time: apiTask.start_time,
       end_time: apiTask.end_time,
       updated_at: apiTask.updated_at,
-      paused_seconds: 0,
-      paused_at: null,
+      paused_seconds: Number(apiTask.paused_seconds ?? apiTask.pausedSeconds ?? 0),
+      paused_at: apiTask.paused_at ?? apiTask.pausedAt ?? null,
     };
     if (apiTask.task_type === "score") {
       base.score = {
@@ -221,6 +227,20 @@
     return d && !Number.isNaN(d.getTime()) ? d : now;
   }
 
+  function startTimeWithOffset(task, now = new Date()) {
+    const start = parseDate(task?.start_time || task?.startTime);
+    if (!start) return now;
+    return new Date(start.getTime() + START_TIME_OFFSET_MS);
+  }
+
+  function anchorTime(task, now = new Date()) {
+    if (!task) return now;
+    if (["completed", "terminated"].includes(task.status)) {
+      return parseDate(task.end_time) || parseDate(task.updated_at) || now;
+    }
+    return now;
+  }
+
   function formatLocalDateTimeInput(date = new Date()) {
     const offsetMs = date.getTimezoneOffset() * 60000;
     const local = new Date(date.getTime() - offsetMs);
@@ -230,24 +250,17 @@
   function calculatePausedSeconds(task, now = new Date()) {
     const basePaused = Number(task.paused_seconds || 0);
     if (task.status !== "paused") return Math.max(basePaused, 0);
-    const pausedAt = task.paused_at ? new Date(task.paused_at) : null;
-    if (!pausedAt || Number.isNaN(pausedAt.getTime())) return Math.max(basePaused, 0);
+    const pausedAt = parseDate(task.paused_at);
+    if (!pausedAt) return Math.max(basePaused, 0);
     const extra = Math.max(Math.floor((now.getTime() - pausedAt.getTime()) / 1000), 0);
     return Math.max(basePaused + extra, 0);
   }
 
-  function calculationAnchor(task, now = new Date()) {
-    if (["completed", "terminated"].includes(task.status)) {
-      if (task.end_time) return toDateOrNow(task.end_time, now);
-      if (task.updated_at) return toDateOrNow(task.updated_at, now);
-    }
-    return now;
-  }
-
   function elapsedActiveSeconds(task, now = new Date()) {
+    if (!task) return 0;
     if (task.status === "pending") return 0;
-    const start = toDateOrNow(task.start_time, now);
-    const anchor = calculationAnchor(task, now);
+    const anchor = anchorTime(task, now);
+    const start = startTimeWithOffset(task, anchor);
     const elapsed = Math.max(Math.floor((anchor.getTime() - start.getTime()) / 1000), 0);
     const paused = calculatePausedSeconds(task, anchor);
     return Math.max(elapsed - paused, 0);
@@ -290,12 +303,16 @@
     const baseCurrent = Number(detail.current_points || 0);
     const rate = Number(detail.point_rate || 0) || 7000;
     const ratePerSecond = rate / 3600;
-    const activeSeconds = elapsedActiveSeconds(task, now);
+    const anchor = anchorTime(task, now);
+    const activeSeconds = elapsedActiveSeconds(task, anchor);
     const gained = ratePerSecond > 0 ? ratePerSecond * activeSeconds : 0;
-    const current = Math.min(target || Infinity, baseCurrent + gained);
-    const remainingPoints = Math.max(target - current, 0);
-    const remainingSeconds = ratePerSecond > 0 ? Math.ceil(remainingPoints / ratePerSecond) : 0;
-    const end = new Date(now.getTime() + remainingSeconds * 1000);
+    const current = target > 0 ? Math.min(baseCurrent + gained, target) : baseCurrent + gained;
+    const remainingSeconds =
+      ratePerSecond > 0 && target > 0 ? Math.max(Math.ceil((target - current) / ratePerSecond), 0) : 0;
+    const end = new Date(anchor.getTime() + remainingSeconds * 1000);
+    if (["completed", "terminated"].includes(task.status)) {
+      return { target, current, rate, remainingSeconds: 0, end: anchor };
+    }
     return {
       target,
       current,
@@ -309,9 +326,10 @@
     const detail = task.multiplier || {};
     const duration = Number(detail.duration_hours || 0);
     const durationSeconds = duration * 3600;
-    const activeSeconds = elapsedActiveSeconds(task, now);
+    const anchor = anchorTime(task, now);
+    const activeSeconds = elapsedActiveSeconds(task, anchor);
     const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
-    const end = new Date(now.getTime() + remainingSeconds * 1000);
+    const end = new Date(anchor.getTime() + remainingSeconds * 1000);
     const hasInitialMultiplier =
       detail.initial_multiplier !== undefined &&
       detail.initial_multiplier !== null &&
@@ -319,6 +337,9 @@
     const initialMultiplier = hasInitialMultiplier ? Number(detail.initial_multiplier) : 1;
     const growthPerSecond = Number(detail.current_multiplier ?? 0);
     const currentMultiplier = initialMultiplier + activeSeconds * growthPerSecond;
+    if (["completed", "terminated"].includes(task.status)) {
+      return { duration, end: anchor, remainingSeconds: 0, currentMultiplier, initialMultiplier, growthPerSecond };
+    }
     return { duration, end, remainingSeconds, currentMultiplier, initialMultiplier, growthPerSecond };
   }
 
@@ -326,14 +347,19 @@
     const detail = task.chest || {};
     const duration = Number(detail.duration_hours || 0);
     const durationSeconds = duration * 3600;
-    const activeSeconds = elapsedActiveSeconds(task, now);
+    const anchor = anchorTime(task, now);
+    const activeSeconds = elapsedActiveSeconds(task, anchor);
     const remainingSeconds = Math.max(durationSeconds - activeSeconds, 0);
-    const end = new Date(now.getTime() + remainingSeconds * 1000);
+    const end = new Date(anchor.getTime() + remainingSeconds * 1000);
+    if (["completed", "terminated"].includes(task.status)) {
+      return { duration, end: anchor, remainingSeconds: 0 };
+    }
     return { duration, end, remainingSeconds };
   }
 
   function computeRemainingSeconds(task, now = new Date()) {
     if (!task) return Number.POSITIVE_INFINITY;
+    if (["completed", "terminated"].includes(task.status)) return 0;
     if (task.task_type === "score") return computeScoreMeta(task, now).remainingSeconds;
     if (task.task_type === "multiplier") return computeMultiplierMeta(task, now).remainingSeconds;
     if (task.task_type === "chest") return computeChestMeta(task, now).remainingSeconds;
@@ -643,7 +669,11 @@
 
   function updateRealtimeFields() {
     const now = new Date();
-    const tasks = filteredTasks();
+    const tasks = filteredTasks().filter((task) => {
+      if (!task) return false;
+      if (["completed", "terminated"].includes(task.status)) return false;
+      return task.status === "running";
+    });
     tasks.forEach((task) => {
       const setText = (field, value) => {
         const el = document.querySelector(`[data-field="${field}"][data-task-id="${task.id}"]`);
