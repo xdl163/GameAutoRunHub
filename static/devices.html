@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>设备池 - GameAutoRunHub</title>
     <link rel="stylesheet" href="/static/console.css" />
+    <link rel="stylesheet" href="/static/devices.css" />
+
   </head>
   <body>
     <header class="topbar">
@@ -68,8 +70,10 @@
                 </div>
                 <button type="button" id="open-create-modal" class="primary">新建设备</button>
               </header>
-              <table class="simple-table">
-                <thead>
+
+              <div class="table-scroll">
+                <table class="simple-table">
+                  <thead>
                   <tr>
                     <th>设备ID</th>
                     <th>所属用户</th>
@@ -80,10 +84,12 @@
                     <th>更新时间</th>
                     <th style="width: 200px">操作</th>
                   </tr>
-                </thead>
-                <tbody id="device-rows"></tbody>
-              </table>
+                  </thead>
+                  <tbody id="device-rows"></tbody>
+                </table>
+              </div>
             </div>
+
           </div>
         </section>
       </main>

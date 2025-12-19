@@ -57,7 +57,7 @@ button.ghost {
 
 .layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 180px 1fr;
   min-height: calc(100vh - 60px);
 }
 
@@ -631,12 +631,79 @@ button.ghost.mini.danger {
 }
 @media (max-width: 960px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: 180px 1fr; /* 小屏时侧栏更窄 */
   }
   .sidebar {
-    display: none;
-  }
-  .task-layout {
-    grid-template-columns: 1fr;
+    display: block;                  /* 不隐藏 */
+    padding: 16px 12px;
   }
 }
+
+
+
+/* =========================
+   全局更窄/更紧凑（覆盖补丁）
+   追加到 console.css 末尾即可
+   ========================= */
+
+
+/* 2) 主内容区左右留白更小 */
+.content {
+  padding: 16px;                        /* 原 24px */
+}
+
+/* 3) 面板与卡片内边距更小 */
+.panel {
+  padding: 16px;                        /* 原 24px */
+}
+
+.card {
+  padding: 12px;                        /* 原 16px */
+}
+
+/* 4) 搜索区/筛选区间距更小 */
+.panel-body {
+  gap: 12px;                            /* 原 16px */
+}
+
+.search-row {
+  gap: 12px;                            /* 原 16px */
+}
+
+.search-row .field {
+  min-width: 150px;                     /* 原 180px */
+}
+
+/* 5) 表格更紧凑 */
+.simple-table {
+  font-size: 13px;                      /* 原 14px */
+}
+
+.simple-table th,
+.simple-table td {
+  padding: 8px 6px;                     /* 原 10px 8px */
+}
+
+/* 6) 表格卡片、表头区域更紧凑 */
+.card-header {
+  gap: 10px;                            /* 原 12px */
+}
+
+/* 7) 任务卡片也更紧凑一点（如果你不想影响任务页，可删掉这一段） */
+.task-grid {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); /* 原 240px */
+  gap: 10px;                                                   /* 原 12px */
+}
+.task-card {
+  padding: 10px;                         /* 原 12px */
+  gap: 6px;                              /* 原 8px */
+}
+
+/* 8) 兼容小屏：进一步压缩 */
+@media (max-width: 960px) {
+  .content { padding: 12px; }
+  .panel { padding: 12px; }
+  .card  { padding: 10px; }
+}
+
+

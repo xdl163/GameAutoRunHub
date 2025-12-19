@@ -1,0 +1,17 @@
+/* 只让表格区滚动（最小改动版） */
+.table-card {
+    overflow: hidden; /* 防止外层也滚 */
+}
+
+.table-scroll {
+    overflow: auto;
+    max-height: calc(100vh - 260px); /* 根据页面实际占用调这个值 */
+}
+
+/* 可选：表头 sticky */
+.table-scroll .simple-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--card);
+}

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>设备池操作日志 - GameAutoRunHub</title>
     <link rel="stylesheet" href="/static/console.css" />
+    <link rel="stylesheet" href="/static/device_logs.css" />
+
   </head>
   <body data-active-key="device_logs" data-log-endpoint="/api/logs/device" data-required-roles="admin,super_admin">
     <header class="topbar">
@@ -32,18 +34,22 @@
           </header>
           <div class="panel-body">
             <div class="card table-card">
-              <table class="simple-table">
-                <thead>
+              <div class="table-scroll">
+                <table class="simple-table">
+                  <thead>
                   <tr>
                     <th style="width: 160px">时间</th>
                     <th>操作人</th>
                     <th>操作</th>
                     <th>详情</th>
                   </tr>
-                </thead>
-                <tbody id="log-rows"></tbody>
-              </table>
+                  </thead>
+                  <tbody id="log-rows"></tbody>
+                </table>
+              </div>
             </div>
+
+
           </div>
         </section>
       </main>

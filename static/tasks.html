@@ -38,11 +38,17 @@
           <div class="panel-body task-layout">
             <aside class="task-sidebar">
               <div class="card group-card">
-                <header class="card-header">
-                  <div>
+                <header class="card-header group-header">
+                  <div class="group-header-left">
                     <strong>分组</strong>
                   </div>
+                  <div class="group-header-right" id="owner-filter-field">
+                    <select id="owner-filter" aria-label="查看范围">
+                      <option value="all">全部员工</option>
+                    </select>
+                  </div>
                 </header>
+
                 <div id="group-list" class="group-list"></div>
               </div>
             </aside>
@@ -51,14 +57,22 @@
               <div class="task-main-scroll">
                 <div class="card filters-card">
                   <div class="filter-row">
-                    <div class="field inline" id="owner-filter-field">
-                      <span>查看范围</span>
-                      <select id="owner-filter">
-                        <option value="all">全部员工</option>
-                      </select>
+<!--                    <div class="field inline" id="owner-filter-field">-->
+<!--                      <span>查看范围</span>-->
+<!--                      <select id="owner-filter">-->
+<!--                        <option value="all">全部员工</option>-->
+<!--                      </select>-->
+<!--                    </div>-->
+                    <div class="field inline">
+                      <input
+                              type="text"
+                              id="device-filter"
+                              placeholder="按设备号筛选（模糊匹配）"
+                              autocomplete="off"
+                      />
                     </div>
                     <div class="field inline">
-                      <span>排序</span>
+<!--                      <span>排序</span>-->
                       <select id="task-sort">
                         <option value="remaining_asc">按剩余时间（少→多）</option>
                         <option value="remaining_desc">按剩余时间（多→少）</option>

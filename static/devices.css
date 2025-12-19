@@ -1,0 +1,88 @@
+ /*====== 关键：让整页高度可计算，并禁用页面级滚动（只让表格区滚） ====== */
+html, body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 页面不滚 */
+}
+
+/* topbar 占用固定高度（不参与下面区域滚动） */
+.topbar {
+    flex: 0 0 auto;
+}
+
+/* layout 吃掉 topbar 下面的剩余高度 */
+.layout {
+    flex: 1 1 auto;
+    min-height: 0;     /* 关键：允许内部滚动容器计算高度 */
+    overflow: hidden;  /* 防止外层双滚动 */
+    /*display: flex;     !* 你的 sidebar/content 需要并排 *!*/
+}
+
+/* content / panel 形成“可分配剩余高度”的链路 */
+.content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* panel-header 固定；panel-body 吃剩余 */
+.panel-header {
+    flex: 0 0 auto;
+}
+
+.panel-body {
+    flex: 1 1 auto;
+    min-height: 0;          /* 关键 */
+    display: flex;          /* 上搜索，下表格 */
+    flex-direction: column;
+    gap: 12px;              /* 你想更紧凑可调小 */
+}
+
+/* 搜索区不滚，固定高度 */
+.search-row {
+    flex: 0 0 auto;
+}
+
+/* 表格卡片吃掉剩余高度 */
+.table-card {
+    flex: 1 1 auto;
+    min-height: 0;          /* 关键 */
+    display: flex;
+    flex-direction: column;
+}
+
+/* 表格滚动容器：真正滚动的地方 */
+.table-card .table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;          /* 关键 */
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+/* 表头 sticky：跟随 table-scroll 滚动时固定在顶部 */
+.table-card .simple-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--card, #121a26);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.table-card .simple-table {
+    width: 100%;
+    border-collapse: collapse;
+}

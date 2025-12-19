@@ -2,11 +2,11 @@
    分组模块独立滚动（左侧单独滑动）
    =============================== */
 
-/* 1) 整体布局：主内容区占满剩余高度 */
-.layout {
-    height: 100vh;             /* 让布局有确定高度 */
-    overflow: hidden;          /* 防止外层出现双滚动条 */
-}
+/*!* 1) 整体布局：主内容区占满剩余高度 *!*/
+/*.layout {*/
+/*    height: 100vh;             !* 让布局有确定高度 *!*/
+/*    overflow: hidden;          !* 防止外层出现双滚动条 *!*/
+/*}*/
 
 /* 如果 topbar 是固定高度（常见 56~64），用 padding/offset 保证不被遮挡
    若你已有 topbar sticky/固定逻辑，请按实际情况调整这段 */
@@ -36,11 +36,10 @@
 
 
 /* 4) 分组卡片：列布局，头部固定，列表区域滚动 */
-.group-card {
-    height: 100%;
+.group-card{
+    height: auto;          /* 不强制 100% */
     display: flex;
     flex-direction: column;
-    min-height: 0;            /* 关键 */
 }
 
 /* 分组头部固定在卡片顶部（滚动时不动） */
@@ -55,16 +54,15 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* 分组列表：独立滚动区域 */
-#group-list.group-list {
-    flex: 1 1 auto;
-    min-height: 0;            /* 关键 */
+/* 2) 分组列表：只在超过上限时滚动 */
+#group-list.group-list{
+    flex: 0 0 auto;        /* 不吃满剩余空间 */
     overflow-y: auto;
     overflow-x: hidden;
 
-    /* 让滚动更顺手一点 */
-    overscroll-behavior: contain;
-    padding-right: 6px;       /* 给滚动条留点空间，避免遮挡内容 */
+    /* 关键：给一个“最大高度”，超过就滚动 */
+    max-height: calc(100vh - 280px);
+    /* 220px 你可以按实际 topbar + panel header + padding 微调 */
 }
 
 /* 5) 右侧任务区：保持你原有 task-main-scroll 滚动逻辑 */
@@ -146,4 +144,216 @@
 .group-item .group-owner{
     margin:0;
     line-height:1.2;
+}
+.task-name{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.task-kv-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+}
+.task-kv{ min-width:0; }
+
+
+/* 任务卡片宽度 */
+.task-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+
+/* 第三行：两列 KV（左：剩余/当前值；右：预计结束） */
+.task-line3.task-kv-row{
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: 1fr auto; /* 左列自适应，右列按内容宽度 */
+    align-items: baseline;
+    column-gap: 10px;
+
+    font-size: 12px;   /* 第三行更小 */
+    opacity: .9;
+}
+
+/* 每个 KV 容器 */
+.task-line3.task-kv-row .task-kv{
+    min-width: 0;  /* 允许省略生效 */
+}
+
+/* 左列：默认左对齐，允许省略 */
+.task-line3.task-kv-row .task-kv:first-child strong{
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 右列：靠右对齐，且不换行 */
+.task-line3.task-kv-row .task-kv:last-child{
+    text-align: right;
+}
+.task-line3.task-kv-row .task-kv:last-child strong{
+    white-space: nowrap;
+}
+
+
+/* 第四行按钮区：更小、更紧凑，允许换行 */
+.task-actions{
+    display: flex;
+    flex-wrap: wrap;      /* 关键：窄时自动换行 */
+    gap: 6px;             /* 按钮间距更小 */
+    margin-top: 8px;      /* 与第三行间距更小 */
+    align-items: center;
+}
+
+/* 约束按钮本体（针对 ghost mini 组合） */
+.task-actions .ghost.mini{
+    padding: 4px 8px;     /* 关键：缩小按钮 */
+    min-height: 26px;     /* 降低按钮高度 */
+    line-height: 1.1;
+    font-size: 12px;      /* 字更小 */
+    border-radius: 8px;   /* 视觉更紧凑（可按主题调整） */
+}
+
+
+
+/* =========================
+   筛选区域：更紧凑
+   ========================= */
+
+/* 整个筛选卡片变薄 */
+.filters-card{
+    padding: 10px 12px;     /* 原来通常更大，压紧 */
+}
+
+/* 一行内各块之间更紧 */
+.filters-card .filter-row{
+    gap: 8px;               /* 原来 12~16 的话会松 */
+    align-items: center;
+    flex-wrap: wrap;        /* 窄屏时自动换行，避免撑高 */
+}
+
+/* “查看范围/排序”这种 inline field 更紧 */
+.filters-card .field.inline{
+    gap: 6px;
+    padding: 0;             /* 有些主题会给 field 内边距，直接压掉 */
+}
+
+/* label 文案更小 */
+.filters-card .field.inline > span{
+    font-size: 12px;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+/* 下拉框更矮、更小 */
+.filters-card select{
+    height: 28px;
+    padding: 4px 10px;
+    font-size: 12px;
+    line-height: 1.1;
+}
+
+/* pill 组更紧凑，并允许自动换行 */
+.filters-card .pill-group{
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* pill 更小 */
+.filters-card .pill{
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.1;
+    min-height: 26px;
+    border-radius: 999px;
+}
+
+/* 如果你有 type-toggle（新建任务那块）也用了 pill，不想影响它，就限定在 filters-card 内 */
+.filters-card .pill.muted{
+    opacity: .9;
+}
+/* 分组卡片标题：左右布局 */
+.group-header{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+/* 右侧下拉框容器 */
+.group-header-right{
+    display:flex;
+    align-items:center;
+}
+
+/* 下拉框：紧凑一点 */
+.group-header-right select{
+    height: 28px;
+    padding: 4px 10px;
+    font-size: 12px;
+    line-height: 1;
+    border-radius: 10px;
+}
+.filters-card input[type="text"]{
+    height: 28px;
+    padding: 4px 10px;
+    font-size: 12px;
+    line-height: 1.1;
+    border-radius: 10px;
+    border: 1px solid var(--border, rgba(255,255,255,.12));
+    background: transparent;
+    color: inherit;
+    min-width: 200px;     /* 可按需调整 */
+}
+/* =========================
+   任务卡片：整体更紧凑（覆盖版）
+   追加到 tasks.css 末尾
+   ========================= */
+
+/* 1) 卡片自身内边距 + 行间距 */
+.task-card{
+    padding: 10px 10px !important;   /* 原来一般更大 */
+    display: flex;                   /* 用 flex 控制行间距最稳定 */
+    flex-direction: column;
+    row-gap: 6px;                    /* 卡片内每“行”之间的间距 */
+}
+
+/* 2) 第一行 badges 更紧凑 */
+.task-line1 .task-badges{
+    gap: 6px;                        /* badge 间距更小 */
+}
+.task-line1{
+    line-height: 1.1;
+}
+
+/* 3) 第二行名称更紧凑（避免额外撑高） */
+.task-line2{
+    margin-top: -2px;                /* 轻微上移（可改为 0） */
+    line-height: 1.2;
+}
+
+/* 4) 第三行指标行：去掉顶部间距 */
+.task-line3.task-kv-row{
+    margin-top: 0 !important;        /* 你原来是 6px */
+    column-gap: 8px;                 /* 两列之间更紧 */
+    line-height: 1.15;
+}
+
+/* 5) 按钮区：更紧凑 */
+.task-actions{
+    margin-top: 4px !important;      /* 你原来是 8px */
+    gap: 6px;
+}
+
+/* 6) 按钮本体再压一点（可选） */
+.task-actions .ghost.mini{
+    padding: 3px 8px;
+    min-height: 24px;
+    font-size: 12px;
 }

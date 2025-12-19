@@ -1,0 +1,18 @@
+/* ===== 方案A：日志表格独立滚动（通用） ===== */
+.table-card {
+    overflow: hidden; /* 避免卡片本身也滚，导致双滚动条 */
+}
+
+.table-card .table-scroll {
+    overflow: auto;
+    max-height: calc(100vh - 220px); /* 视情况微调 */
+}
+
+/* 表头固定在滚动容器顶部 */
+.table-card .table-scroll .simple-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+}

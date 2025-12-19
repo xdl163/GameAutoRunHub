@@ -5,6 +5,7 @@
   let currentGroupId = "all";
   let currentSort = "remaining_asc";
   let currentOwner = "all";
+  let currentDeviceKeyword = "";
   let currentStatus = "all";
   let currentType = "all";
   let currentUser = null;
@@ -723,9 +724,14 @@
     if (currentType !== "all") {
       tasks = tasks.filter((t) => t.task_type === currentType);
     }
-    if (currentOwner !== "all") {
-      tasks = tasks.filter((t) => t.owner === currentOwner);
+    // if (currentOwner !== "all") {
+    //   tasks = tasks.filter((t) => t.owner === currentOwner);
+    // }
+    if (currentDeviceKeyword) {
+      const kw = currentDeviceKeyword.toLowerCase();
+      tasks = tasks.filter((t) => String(t.device_id || "").toLowerCase().includes(kw));
     }
+
     return sortTasks(tasks);
   }
 
@@ -749,10 +755,45 @@
   async function refreshAllData() {
     await Promise.all([reloadGroupsFromServer(), loadTasksFromServer(currentGroupId)]);
   }
+// ====== 1) 新增：不显示秒的时间与时长格式化 ======
+  function fmtDateNoSeconds(value) {
+    if (!value) return "-";
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "-";
+    const datePart = d.toLocaleDateString();
+    const timePart = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); // 不要秒
+    return `${datePart} ${timePart}`;
+  }
 
+  /**
+   * 不显示秒：按“分钟”进位（避免显示 0 分但其实还有几十秒）
+   * 例：59秒 -> 1分； 61秒 -> 2分； 1小时1分 -> 1小时1分
+   */
+  function secondsToDisplayNoSeconds(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "0分";
+    const totalMin = Math.max(Math.ceil(seconds / 60), 0);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h && m) return `${h}小时${m}分`;
+    if (h && !m) return `${h}小时`;
+    return `${m}分`;
+  }
+
+// 可选：防止名称注入/破坏DOM（建议加）
+  function escapeHtml(str) {
+    return String(str ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+  }
+
+  // ====== 2) 替换：设备号展示（第一行要求：设备号 类型 状态） ======
   function deviceLine(task) {
-    if (task.status === "terminated") return "";
-    return task.device_id ? `<span class="badge subtle">设备：${task.device_id}</span>` : `<span class="badge warning">待绑定设备</span>`;
+    // 终止任务你之前不显示设备，这里按你新规范仍可显示（如需继续隐藏，可加判断）
+    if (task?.device_id) return `<span class="badge subtle">${escapeHtml(task.device_id)}</span>`;
+    return `<span class="badge warning">未绑定</span>`;
   }
 
   function getGroupById(id) {
@@ -769,50 +810,69 @@
     return `
       <div class="task-actions">
         <button class="ghost mini" data-action="start-pause">${task.status === "running" ? "暂停" : "开始"}</button>
-        <button class="ghost mini" data-action="patch">${task.task_type === "score" ? "补暂停/积分" : "补暂停"}</button>
+        <button class="ghost mini" data-action="patch">${task.task_type === "score" ? "补暂停" : "补暂停"}</button>
         ${editable ? '<button class="ghost mini" data-action="edit">修改</button>' : ""}
         <button class="ghost mini danger" data-action="terminate">终止</button>
       </div>
     `;
   }
 
+// ====== 3) 替换：任务卡片“第二行指标行” ======
   function renderTaskBody(task) {
     const now = new Date();
+
+    // 灵光积分：当前积分 + 预计结束（不要秒）
     if (task.task_type === "score") {
       const meta = computeScoreMeta(task, now);
       return `
-        <div class="task-meta">
-          <div><span class="muted mini">当前积分</span><strong data-field="current-points" data-task-id="${task.id}">${formatInteger(meta.current)}</strong></div>
-          <div><span class="muted mini">目标积分</span><strong>${formatInteger(meta.target)}</strong></div>
-          <div><span class="muted mini">积分速率</span><strong>${meta.rate}/小时</strong></div>
-          <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
-          <div><span class="muted mini">预计结束</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
+      <div class="task-line3 task-kv-row">
+        <div class="task-kv">
+<!--          <span class="muted mini">当前积分</span>-->
+          <strong data-field="current-points" data-task-id="${task.id}">${formatInteger(meta.current)}</strong>
         </div>
-      `;
-    }
-    if (task.task_type === "multiplier") {
-      const meta = computeMultiplierMeta(task, now);
-      return `
-        <div class="task-meta">
-          <div><span class="muted mini">时长</span><strong>${meta.duration}小时</strong></div>
-          <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
-          <div><span class="muted mini">截至时间</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
-          <div><span class="muted mini">初始倍率</span><strong>${meta.initialMultiplier.toFixed(2)}</strong></div>
-          <div><span class="muted mini">倍率增长</span><strong>${meta.growthPerSecond.toFixed(2)}/秒</strong></div>
-          <div><span class="muted mini">当前倍率</span><strong data-field="current-multiplier" data-task-id="${task.id}">${meta.currentMultiplier.toFixed(2)}</strong></div>
+        <div class="task-kv">
+<!--          <span class="muted mini">预计结束</span>-->
+          <strong data-field="end-time" data-task-id="${task.id}">${fmtDateNoSeconds(meta.end)}</strong>
         </div>
-      `;
+      </div>
+    `;
     }
+
+    // 宝箱：剩余时间（不要秒） + 预计结束（不要秒）
     if (task.task_type === "chest") {
       const meta = computeChestMeta(task, now);
       return `
-        <div class="task-meta">
-          <div><span class="muted mini">时长</span><strong>${meta.duration}小时</strong></div>
-          <div><span class="muted mini">剩余时间</span><strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplay(meta.remainingSeconds)}</strong></div>
-          <div><span class="muted mini">截至时间</span><strong data-field="end-time" data-task-id="${task.id}">${fmtDate(meta.end)}</strong></div>
+      <div class="task-line3 task-kv-row">
+        <div class="task-kv">
+<!--          <span class="muted mini">剩余时间</span>-->
+          <strong data-field="remaining-time" data-task-id="${task.id}">${secondsToDisplayNoSeconds(meta.remainingSeconds)}</strong>
         </div>
-      `;
+        <div class="task-kv">
+<!--          <span class="muted mini">预计结束</span>-->
+          <strong data-field="end-time" data-task-id="${task.id}">${fmtDateNoSeconds(meta.end)}</strong>
+        </div>
+      </div>
+    `;
     }
+
+    // 挂机倍率：前倍率 + 预计结束（不要秒）
+    if (task.task_type === "multiplier") {
+      const meta = computeMultiplierMeta(task, now);
+      const prev = Number.isFinite(meta.initialMultiplier) ? meta.initialMultiplier : 1;
+      return `
+      <div class="task-line3 task-kv-row">
+        <div class="task-kv">
+<!--          <span class="muted mini">前倍率</span>-->
+          <strong>${prev.toFixed(2)}</strong>
+        </div>
+        <div class="task-kv">
+<!--          <span class="muted mini">预计结束</span>-->
+          <strong data-field="end-time" data-task-id="${task.id}">${fmtDateNoSeconds(meta.end)}</strong>
+        </div>
+      </div>
+    `;
+    }
+
     return "";
   }
 
@@ -823,27 +883,28 @@
       if (["completed", "terminated"].includes(task.status)) return false;
       return task.status === "running";
     });
+
     tasks.forEach((task) => {
       const setText = (field, value) => {
         const el = document.querySelector(`[data-field="${field}"][data-task-id="${task.id}"]`);
         if (el) el.textContent = value;
       };
+
       if (task.task_type === "score") {
         const meta = computeScoreMeta(task, now);
         setText("current-points", formatInteger(meta.current));
-        setText("remaining-time", secondsToDisplay(meta.remainingSeconds));
-        setText("end-time", fmtDate(meta.end));
+        setText("end-time", fmtDateNoSeconds(meta.end));
       }
+
       if (task.task_type === "multiplier") {
         const meta = computeMultiplierMeta(task, now);
-        setText("remaining-time", secondsToDisplay(meta.remainingSeconds));
-        setText("end-time", fmtDate(meta.end));
-        setText("current-multiplier", meta.currentMultiplier.toFixed(2));
+        setText("end-time", fmtDateNoSeconds(meta.end));
       }
+
       if (task.task_type === "chest") {
         const meta = computeChestMeta(task, now);
-        setText("remaining-time", secondsToDisplay(meta.remainingSeconds));
-        setText("end-time", fmtDate(meta.end));
+        setText("remaining-time", secondsToDisplayNoSeconds(meta.remainingSeconds));
+        setText("end-time", fmtDateNoSeconds(meta.end));
       }
     });
   }
@@ -853,11 +914,14 @@
     realtimeTimer = setInterval(updateRealtimeFields, 1000);
   }
 
+// ====== 4) 替换：renderTasks()（严格三行：第一行 badges；第二行名称；第三行按钮） ======
   function renderTasks() {
     const grid = document.querySelector("#task-grid");
     if (!grid) return;
+
     const tasks = filteredTasks();
     grid.innerHTML = "";
+
     if (!tasks.length) {
       const empty = document.createElement("div");
       empty.className = "placeholder";
@@ -865,24 +929,34 @@
       grid.appendChild(empty);
       return;
     }
+
     tasks.forEach((task) => {
+      const name = task?.name ? String(task.name) : "未命名任务";
+
       const card = document.createElement("div");
       card.className = "task-card";
+
       card.innerHTML = `
-        <div class="task-card-header">
-          <div>
-            <div class="title-line">
-              <strong>${task.name}</strong>
-              ${typeChip(task.task_type)}
-              ${statusChip(task.status)}
-            </div>
-            <p class="muted mini">任务ID：${task.id}</p>
-          </div>
-          <div class="task-device">${deviceLine(task)}</div>
+      <!-- 第一行：设备号 类型 状态 -->
+      <div class="task-line1">
+        <div class="task-badges">
+          ${deviceLine(task)}
+          ${typeChip(task.task_type)}
+          ${statusChip(task.status)}
         </div>
-        ${renderTaskBody(task)}
-        ${renderTaskFooter(task)}
-      `;
+      </div>
+
+      <!-- 第二行：名称（小字，显示不下省略） -->
+      <div class="task-line2 task-name muted mini" title="${escapeHtml(name)}">
+        ${escapeHtml(name)}
+      </div>
+
+      <!-- 第二行（指标行）：按任务类型渲染 -->
+      ${renderTaskBody(task)}
+
+      <!-- 第三行：按钮 -->
+      ${renderTaskFooter(task)}
+    `;
 
       card.querySelectorAll("[data-action]").forEach((btn) => {
         btn.addEventListener("click", async (evt) => {
@@ -893,8 +967,10 @@
 
       grid.appendChild(card);
     });
+
     updateRealtimeFields();
   }
+
 
   function getGroupName(id) {
     return taskState.groups.find((g) => g.id === id)?.name || "未知分组";
@@ -1491,6 +1567,18 @@
   }
 
   function bindEvents() {
+    const deviceInput = document.querySelector("#device-filter");
+    if (deviceInput) {
+      let timer = null;
+      deviceInput.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          currentDeviceKeyword = (deviceInput.value || "").trim();
+          renderTasks();
+        }, 150); // 轻量防抖
+      });
+    }
+
     document.querySelector("#create-group-btn")?.addEventListener("click", () => {
       document.querySelector("#group-name").value = "";
       document.querySelector("#group-desc").value = "";
@@ -1623,6 +1711,10 @@
     renderGroups();
     renderTypeFilter();
     renderTasks();
+
+    const deviceInput = document.querySelector("#device-filter");
+    if (deviceInput) deviceInput.value = currentDeviceKeyword;
+
     startRealtimeTicker();
     setCreateTypeButtons(createTaskType);
     updateTypeSections("#task-modal", createTaskType);
