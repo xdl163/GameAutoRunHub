@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
@@ -10,6 +11,15 @@ from pydantic import BaseModel, Field, ValidationError
 
 # 配置文件位于项目根目录下的 config/settings.json
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.json"
+ENV_KEYS = {
+    "DB_HOST",
+    "DB_PORT",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_NAME",
+    "DEFAULT_SCORE_RATE",
+    "DEFAULT_MULTIPLIER",
+}
 
 
 class Settings(BaseModel):
@@ -34,16 +44,22 @@ class Settings(BaseModel):
 
 
 def _load_raw_config() -> Dict[str, Any]:
-    if not CONFIG_PATH.exists():
+    file_data: Dict[str, Any] = {}
+    if CONFIG_PATH.exists():
+        with CONFIG_PATH.open("r", encoding="utf-8") as fp:
+            file_data = json.load(fp)
+
+    env_data = {key: value for key in ENV_KEYS if (value := os.getenv(key)) is not None}
+
+    if not file_data and not env_data:
         raise FileNotFoundError(
             (
-                f"配置文件未找到：{CONFIG_PATH}. 请创建 settings.json 并提供 "
+                f"配置文件未找到：{CONFIG_PATH}. 请创建 settings.json 或设置环境变量 "
                 "DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、DB_NAME"
             )
         )
 
-    with CONFIG_PATH.open("r", encoding="utf-8") as fp:
-        return json.load(fp)
+    return {**file_data, **env_data}
 
 
 @lru_cache(maxsize=1)
