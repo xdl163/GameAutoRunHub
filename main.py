@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router as api_router
 from app.api.deps import get_current_user
 from app.core.init_db import init_database
+from app.core.task_watcher import start_task_watcher, stop_task_watcher
 
 app = FastAPI(title="GameAutoRunHub")
 
@@ -14,6 +15,16 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 init_database()
 
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+async def _start_task_watcher():
+    start_task_watcher()
+
+
+@app.on_event("shutdown")
+async def _stop_task_watcher():
+    stop_task_watcher()
 
 
 @app.exception_handler(HTTPException)
