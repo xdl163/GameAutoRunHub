@@ -1,19 +1,16 @@
-version: "3.9"
-
 services:
   app:
-    build: .
+    image: gameautorunhub:v1.0
     container_name: gameautorunhub_app
     restart: unless-stopped
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "8055:8000"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - .:/app
+
 
   db:
     image: mysql:8.0
@@ -24,13 +21,12 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-game_auto_run_hub}
       MYSQL_USER: ${DB_USER:-app}
       MYSQL_PASSWORD: ${DB_PASSWORD:-root}
-    ports:
-      - "3306:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 15s
     volumes:
       - db_data:/var/lib/mysql
 
