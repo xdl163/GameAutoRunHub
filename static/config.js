@@ -1,4 +1,7 @@
 export function isCapacitorNative() {
+  const platform = window.Capacitor?.getPlatform?.();
+  if (platform && platform !== "web") return true;
+
   return !!(
     window.Capacitor &&
     window.Capacitor.isNativePlatform &&
@@ -6,6 +9,8 @@ export function isCapacitorNative() {
   );
 }
 
-export const API_BASE = isCapacitorNative()
-  ? "http://83.229.125.195:8055" // App 环境
-  : ""; // 浏览器同源
+export function getApiBase() {
+  return isCapacitorNative() ? "http://83.229.125.195:8055" : "";
+}
+
+export const API_BASE = getApiBase();
