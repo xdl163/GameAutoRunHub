@@ -1,3 +1,5 @@
+import { apiFetch as baseApiFetch } from "./http.js";
+
 const RoleLabels = {
   user: "普通用户",
   admin: "管理员",
@@ -149,7 +151,7 @@ async function apiFetch(url, options = {}) {
   if (session?.token) {
     headers["Authorization"] = `Bearer ${session.token}`;
   }
-  const resp = await fetch(url, { ...options, headers });
+  const resp = await baseApiFetch(url, { ...options, headers });
   if (resp.status === 401) {
     clearSession();
     window.location.href = "/";

@@ -1,3 +1,5 @@
+import { apiFetch } from "./http.js";
+
 function saveSession(session) {
   localStorage.setItem("garh_session", JSON.stringify(session));
 }
@@ -13,7 +15,7 @@ async function login() {
   }
 
   try {
-    const resp = await fetch("/api/login", {
+    const resp = await apiFetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -48,7 +50,7 @@ function init() {
   if (sessionRaw) {
     const session = JSON.parse(sessionRaw);
     // 确认令牌仍然有效再跳转，避免无效会话造成重定向噪声
-    fetch("/api/health", {
+    apiFetch("/api/health", {
       headers: { Authorization: `Bearer ${session.token}` },
     })
       .then((resp) => {
