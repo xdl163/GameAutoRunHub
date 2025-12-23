@@ -2,6 +2,12 @@ export function isCapacitorNative() {
   const platform = window.Capacitor?.getPlatform?.();
   if (platform && platform !== "web") return true;
 
+  const origin = window.location.origin || "";
+  if (origin.startsWith("capacitor://") || window.location.protocol === "file:") return true;
+
+  const ua = navigator.userAgent || "";
+  if (/Capacitor/i.test(ua)) return true;
+
   return !!(
     window.Capacitor &&
     window.Capacitor.isNativePlatform &&
