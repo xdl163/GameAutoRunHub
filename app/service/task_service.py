@@ -250,6 +250,7 @@ def list_tasks_paginated(
             status=status,
             include_all=False,
             device_identifier=device_identifier,
+            sort_by=sort_by,
         )
         return tasks, len(tasks)
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import List, Optional, Sequence, Tuple
 
 from sqlalchemy import Select, asc, case, desc, func, select
-from sqlalchemy.sql import expression
 from sqlalchemy.orm import Session
 
 from app.models import Device, Task, TaskStatusEnum, TaskTypeEnum
@@ -12,6 +11,12 @@ from app.models import Device, Task, TaskStatusEnum, TaskTypeEnum
 
 def _build_base_query() -> Select[tuple[Task]]:
     return select(Task)
+
+
+def _order_nulls_last(column, descending: bool = False):
+    nulls_last_flag = case((column.is_(None), 1), else_=0)
+    direction = desc if descending else asc
+    return nulls_last_flag, direction(column)
 
 
 def _apply_sorting(stmt: Select[tuple[Task]], sort_by: str | None) -> Select[tuple[Task]]:
@@ -30,9 +35,11 @@ def _apply_sorting(stmt: Select[tuple[Task]], sort_by: str | None) -> Select[tup
     if sort_key == "type":
         return stmt.order_by(Task.task_type, Task.updated_at.desc(), Task.id.desc())
     if sort_key in {"start_time", "start_time_asc"}:
-        return stmt.order_by(expression.nullslast(asc(Task.start_time)), Task.id.desc())
+        nulls_last_flag, ordered = _order_nulls_last(Task.start_time, descending=False)
+        return stmt.order_by(nulls_last_flag, ordered, Task.id.desc())
     if sort_key == "start_time_desc":
-        return stmt.order_by(expression.nullslast(desc(Task.start_time)), Task.id.desc())
+        nulls_last_flag, ordered = _order_nulls_last(Task.start_time, descending=True)
+        return stmt.order_by(nulls_last_flag, ordered, Task.id.desc())
 
     return stmt.order_by(Task.updated_at.desc(), Task.id.desc())
 
