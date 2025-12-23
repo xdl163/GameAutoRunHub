@@ -30,7 +30,7 @@ async function login() {
     const data = await resp.json();
     saveSession(data);
     errorEl.textContent = "";
-    window.location.href = "/tasks";
+    window.location.href = "./tasks.html";
   } catch (err) {
     console.error(err);
     errorEl.textContent = "无法连接服务器";
@@ -55,7 +55,7 @@ function init() {
     })
       .then((resp) => {
         if (resp.ok) {
-          window.location.href = "/tasks";
+          window.location.href = "./tasks.html";
         } else if (resp.status === 401) {
           localStorage.removeItem("garh_session");
         }
