@@ -1,3 +1,5 @@
+import { apiFetch as baseApiFetch } from "./http.js";
+
 const RoleLabels = {
   user: "普通用户",
   admin: "管理员",
@@ -6,37 +8,37 @@ const RoleLabels = {
 
 const PermissionMenus = {
   base: [
-    { key: "tasks", label: "任务管理", href: "/tasks" },
-    { key: "devices", label: "设备池", href: "/devices" },
-    { key: "account", label: "账户设置", href: "/account" },
+    { key: "tasks", label: "任务管理", href: "./tasks.html" },
+    { key: "devices", label: "设备池", href: "./devices.html" },
+    { key: "account", label: "账户设置", href: "./account.html" },
   ],
   admin: [
-    { key: "users", label: "用户管理", href: "/users" },
+    { key: "users", label: "用户管理", href: "./users.html" },
     {
       key: "logs",
       label: "日志中心",
       children: [
-        { key: "task_logs", label: "任务操作日志", href: "/logs/task" },
-        { key: "device_logs", label: "设备池操作日志", href: "/logs/device" },
-        { key: "account_logs", label: "账户操作日志", href: "/logs/account" },
+        { key: "task_logs", label: "任务操作日志", href: "./task-logs.html" },
+        { key: "device_logs", label: "设备池操作日志", href: "./device-logs.html" },
+        { key: "account_logs", label: "账户操作日志", href: "./logs.html" },
       ],
-      href: "/logs/account",
+      href: "./logs.html",
     },
     {
       key: "system",
       label: "系统配置",
-      href: "/system/global",
-      children: [{ key: "global_config", label: "全局参数配置", href: "/system/global" }],
+      href: "./system.html",
+      children: [{ key: "global_config", label: "全局参数配置", href: "./system.html" }],
     },
   ],
   super_admin: [
     {
       key: "system",
       label: "系统配置",
-      href: "/system/platform",
+      href: "./system-platform.html",
       children: [
-        { key: "platform_config", label: "平台级配置", href: "/system/platform" },
-        { key: "global_config", label: "全局参数配置", href: "/system/global" },
+        { key: "platform_config", label: "平台级配置", href: "./system-platform.html" },
+        { key: "global_config", label: "全局参数配置", href: "./system.html" },
       ],
     },
   ],
@@ -137,7 +139,7 @@ function getCurrentUser() {
 function requireAuth() {
   const session = getSession();
   if (!session || !session.token) {
-    window.location.href = "/";
+    window.location.href = "./index.html";
     return null;
   }
   return session.user;
@@ -149,10 +151,10 @@ async function apiFetch(url, options = {}) {
   if (session?.token) {
     headers["Authorization"] = `Bearer ${session.token}`;
   }
-  const resp = await fetch(url, { ...options, headers });
+  const resp = await baseApiFetch(url, { ...options, headers });
   if (resp.status === 401) {
     clearSession();
-    window.location.href = "/";
+    window.location.href = "./index.html";
     return Promise.reject(new Error("未认证"));
   }
   return resp;
@@ -247,7 +249,7 @@ function bindTopbarActions() {
         console.warn(err);
       } finally {
         clearSession();
-        window.location.href = "/";
+        window.location.href = "./index.html";
       }
     });
   }
@@ -255,7 +257,7 @@ function bindTopbarActions() {
   const changePwdBtn = document.querySelector("#change-password-btn");
   if (changePwdBtn) {
     changePwdBtn.addEventListener("click", () => {
-      window.location.href = "/account";
+      window.location.href = "./account.html";
     });
   }
 }
@@ -276,7 +278,7 @@ function requireRole(user, roles = []) {
   if (!roles.length) return true;
   if (!roles.includes(user.role)) {
     alert("当前角色无访问权限");
-    window.location.href = "/tasks";
+    window.location.href = "./tasks.html";
     return false;
   }
   return true;

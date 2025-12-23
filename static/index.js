@@ -1,3 +1,5 @@
+import { apiFetch } from "./http.js";
+
 function saveSession(session) {
   localStorage.setItem("garh_session", JSON.stringify(session));
 }
@@ -13,7 +15,7 @@ async function login() {
   }
 
   try {
-    const resp = await fetch("/api/login", {
+    const resp = await apiFetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -28,7 +30,7 @@ async function login() {
     const data = await resp.json();
     saveSession(data);
     errorEl.textContent = "";
-    window.location.href = "/tasks";
+    window.location.href = "./tasks.html";
   } catch (err) {
     console.error(err);
     errorEl.textContent = "无法连接服务器";
@@ -48,12 +50,12 @@ function init() {
   if (sessionRaw) {
     const session = JSON.parse(sessionRaw);
     // 确认令牌仍然有效再跳转，避免无效会话造成重定向噪声
-    fetch("/api/health", {
+    apiFetch("/api/health", {
       headers: { Authorization: `Bearer ${session.token}` },
     })
       .then((resp) => {
         if (resp.ok) {
-          window.location.href = "/tasks";
+          window.location.href = "./tasks.html";
         } else if (resp.status === 401) {
           localStorage.removeItem("garh_session");
         }
