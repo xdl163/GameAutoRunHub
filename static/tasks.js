@@ -3,7 +3,7 @@
 
   let taskState = loadTaskState();
   let currentGroupId = "all";
-  let currentSort = "remaining_asc";
+  let currentSort = "status";
   let currentOwner = "all";
   let currentDeviceKeyword = "";
   let currentStatus = "all";
@@ -18,6 +18,12 @@
   const deviceLoadPromises = new Map();
   let realtimeTimer = null;
   const START_TIME_OFFSET_MS = 8 * 3600 * 1000;
+  const taskPagination = {
+    page: 1,
+    pageSize: 30,
+    total: 0,
+  };
+  const serverSortKeys = new Set(["status", "type", "start_time", "start_time_asc", "start_time_desc"]);
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -71,6 +77,19 @@
         display_name: "",
       }));
     }
+  }
+
+  function renderTaskPagination() {
+    const info = document.querySelector("#task-pagination-info");
+    const prev = document.querySelector("#task-prev-page");
+    const next = document.querySelector("#task-next-page");
+    const totalPages = Math.max(1, Math.ceil(taskPagination.total / taskPagination.pageSize));
+
+    if (info) {
+      info.textContent = `第 ${taskPagination.page} / ${totalPages} 页，共 ${taskPagination.total} 条`;
+    }
+    if (prev) prev.disabled = taskPagination.page <= 1;
+    if (next) next.disabled = taskPagination.page >= totalPages;
   }
 
   async function ensureUserOptionsLoaded() {
@@ -479,12 +498,13 @@
     const allBtn = document.createElement("button");
     const allActive = currentGroupId === "all";
     allBtn.className = `group-item ${allActive ? "active" : ""}`;
+    const totalCount = Number.isFinite(Number(taskPagination.total)) ? Number(taskPagination.total) : taskState.tasks.length;
 
     allBtn.innerHTML = `
     <div class="group-content">
       <div class="group-row1">
         <strong class="group-title">全部任务</strong>
-        <span class="badge group-count">${taskState.tasks.length}</span>
+        <span class="badge group-count">${totalCount}</span>
       </div>
       ${
         allActive
@@ -496,7 +516,8 @@
 
     allBtn.addEventListener("click", () => {
       currentGroupId = "all";
-      loadTasksFromServer("all");
+      taskPagination.page = 1;
+      loadTasksFromServer("all", { page: taskPagination.page });
     });
 
     list.innerHTML = "";
@@ -553,7 +574,8 @@
         if (evt.target?.closest?.("[data-delete],[data-manage]")) return;
         currentGroupId = group.id;
         renderGroups();
-        loadTasksFromServer(group.id);
+        taskPagination.page = 1;
+        loadTasksFromServer(group.id, { page: taskPagination.page });
       });
 
       // 绑定“管理”
@@ -619,7 +641,8 @@
       pill.addEventListener("click", () => {
         currentType = type.id;
         renderTypeFilter();
-        renderTasks();
+        taskPagination.page = 1;
+        loadTasksFromServer(currentGroupId, { page: taskPagination.page });
       });
       wrapper.appendChild(pill);
     });
@@ -636,7 +659,8 @@
       pill.addEventListener("click", () => {
         currentStatus = item.id;
         renderStatusFilter();
-        renderTasks();
+        taskPagination.page = 1;
+        loadTasksFromServer(currentGroupId, { page: taskPagination.page });
       });
       wrapper.appendChild(pill);
     });
@@ -732,17 +756,34 @@
       tasks = tasks.filter((t) => String(t.device_id || "").toLowerCase().includes(kw));
     }
 
+    if (serverSortKeys.has(currentSort)) return tasks;
     return sortTasks(tasks);
   }
 
-  async function loadTasksFromServer(groupId = currentGroupId) {
+  async function loadTasksFromServer(groupId = currentGroupId, { page = taskPagination.page } = {}) {
     try {
       const params = new URLSearchParams();
-      if (groupId && groupId !== "all") params.append("group_id", groupId);
+      const effectiveGroupId = groupId ?? currentGroupId;
+      if (effectiveGroupId && effectiveGroupId !== "all") {
+        const groupIdNum = Number(effectiveGroupId);
+        params.append("group_id", Number.isFinite(groupIdNum) ? groupIdNum : effectiveGroupId);
+      }
+      if (currentStatus !== "all") params.append("status", currentStatus);
+      if (currentType !== "all") params.append("task_type", currentType);
+      const deviceKw = (currentDeviceKeyword || "").trim();
+      if (deviceKw) params.append("device_identifier", deviceKw);
+      if (currentSort) params.append("sort_by", currentSort);
+      params.append("page", page);
+      params.append("page_size", taskPagination.pageSize);
+
       const resp = await apiFetch(`/api/tasks${params.toString() ? `?${params.toString()}` : ""}`);
       if (!resp.ok) throw new Error(`加载任务失败 ${resp.status}`);
       const data = await resp.json();
-      taskState.tasks = (data || []).map((task) => normalizeApiTask(task)).filter(Boolean);
+      const list = Array.isArray(data) ? data : data?.items || [];
+      taskPagination.total = Number(data?.total ?? list?.length ?? 0);
+      taskPagination.page = Number(data?.page ?? page ?? 1);
+      taskPagination.pageSize = Number(data?.page_size ?? taskPagination.pageSize);
+      taskState.tasks = (list || []).map((task) => normalizeApiTask(task)).filter(Boolean);
       saveTaskState(taskState);
       renderTasks();
       renderGroups();
@@ -753,7 +794,7 @@
   }
 
   async function refreshAllData() {
-    await Promise.all([reloadGroupsFromServer(), loadTasksFromServer(currentGroupId)]);
+    await Promise.all([reloadGroupsFromServer(), loadTasksFromServer(currentGroupId, { page: taskPagination.page })]);
   }
 // ====== 1) 新增：不显示秒的时间与时长格式化 ======
   function fmtDateNoSeconds(value) {
@@ -971,6 +1012,7 @@
     });
 
     updateRealtimeFields();
+    renderTaskPagination();
   }
 
 
@@ -1576,7 +1618,8 @@
         clearTimeout(timer);
         timer = setTimeout(() => {
           currentDeviceKeyword = (deviceInput.value || "").trim();
-          renderTasks();
+          taskPagination.page = 1;
+          loadTasksFromServer(currentGroupId, { page: taskPagination.page });
         }, 150); // 轻量防抖
       });
     }
@@ -1678,8 +1721,26 @@
     });
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
-      renderTasks();
+      taskPagination.page = 1;
+      loadTasksFromServer(currentGroupId, { page: taskPagination.page });
     });
+    const prevBtn = document.querySelector("#task-prev-page");
+    const nextBtn = document.querySelector("#task-next-page");
+    if (prevBtn) {
+      prevBtn.addEventListener("click", () => {
+        if (taskPagination.page <= 1) return;
+        taskPagination.page -= 1;
+        loadTasksFromServer(currentGroupId, { page: taskPagination.page });
+      });
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener("click", () => {
+        const totalPages = Math.max(1, Math.ceil(taskPagination.total / taskPagination.pageSize));
+        if (taskPagination.page >= totalPages) return;
+        taskPagination.page += 1;
+        loadTasksFromServer(currentGroupId, { page: taskPagination.page });
+      });
+    }
     document.querySelector("#open-access-modal")?.addEventListener("click", async () => {
       await ensureUserOptionsLoaded();
       renderAccessModalList();
@@ -1716,6 +1777,8 @@
 
     const deviceInput = document.querySelector("#device-filter");
     if (deviceInput) deviceInput.value = currentDeviceKeyword;
+    const sortSelect = document.querySelector("#task-sort");
+    if (sortSelect) sortSelect.value = currentSort;
 
     startRealtimeTicker();
     setCreateTypeButtons(createTaskType);

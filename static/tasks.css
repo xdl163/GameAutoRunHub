@@ -166,6 +166,14 @@
     gap: 10px;
 }
 
+.task-pagination{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    padding:12px 0;
+}
+
 
 /* 第三行：两列 KV（左：剩余/当前值；右：预计结束） */
 .task-line3.task-kv-row{

@@ -57,6 +57,13 @@ class TaskRead(BaseModel):
         from_attributes = True
 
 
+class TaskListResponse(BaseModel):
+    items: list[TaskRead]
+    total: int
+    page: int
+    page_size: int
+
+
 class TaskStatusChange(BaseModel):
     action: str
 
@@ -128,7 +135,7 @@ def _as_task_read(task) -> TaskRead:
 
 @router.get(
     "/tasks",
-    response_model=list[TaskRead],
+    response_model=TaskListResponse,
     summary="任务列表",
     dependencies=[Depends(get_current_user)],
 )
@@ -136,18 +143,31 @@ async def list_tasks(
     group_id: int | None = None,
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
+    device_identifier: str | None = None,
+    sort_by: str | None = "status",
+    page: int = 1,
+    page_size: int = 30,
     current=Depends(get_current_user),
     db=Depends(get_db),
 ):
     user: User = current["user"]
-    tasks = task_service.list_tasks(
+    tasks, total = task_service.list_tasks_paginated(
         db,
         requester=user,
         group_id=group_id,
         task_type=task_type,
         status=status,
+        device_identifier=device_identifier,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size,
     )
-    return [_as_task_read(t) for t in tasks]
+    return TaskListResponse(
+        items=[_as_task_read(t) for t in tasks],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(
