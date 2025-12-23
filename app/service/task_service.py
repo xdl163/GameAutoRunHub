@@ -208,6 +208,7 @@ def list_tasks(
     group_id: int | None = None,
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
+    sort_by: str | None = None,
 ) -> list[Task]:
     tasks, _ = list_tasks_paginated(
         db,
@@ -217,6 +218,7 @@ def list_tasks(
         status=status,
         page=None,
         page_size=None,
+        sort_by=sort_by,
     )
     return tasks
 
@@ -231,6 +233,7 @@ def list_tasks_paginated(
     page: int | None = 1,
     page_size: int | None = 20,
     device_identifier: str | None = None,
+    sort_by: str | None = None,
 ) -> tuple[list[Task], int]:
     accessible_group_ids = task_group_service.resolve_accessible_group_ids(db, requester=requester)
     if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
@@ -260,6 +263,7 @@ def list_tasks_paginated(
         page=page,
         page_size=page_size,
         device_identifier=device_identifier,
+        sort_by=sort_by,
     )
 
 

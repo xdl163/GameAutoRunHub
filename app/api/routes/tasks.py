@@ -144,6 +144,7 @@ async def list_tasks(
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
     device_identifier: str | None = None,
+    sort_by: str | None = "status",
     page: int = 1,
     page_size: int = 30,
     current=Depends(get_current_user),
@@ -157,6 +158,7 @@ async def list_tasks(
         task_type=task_type,
         status=status,
         device_identifier=device_identifier,
+        sort_by=sort_by,
         page=page,
         page_size=page_size,
     )

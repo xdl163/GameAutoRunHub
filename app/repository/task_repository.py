@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence, Tuple
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, asc, case, desc, func, select
+from sqlalchemy.sql import expression
 from sqlalchemy.orm import Session
 
 from app.models import Device, Task, TaskStatusEnum, TaskTypeEnum
@@ -11,6 +12,29 @@ from app.models import Device, Task, TaskStatusEnum, TaskTypeEnum
 
 def _build_base_query() -> Select[tuple[Task]]:
     return select(Task)
+
+
+def _apply_sorting(stmt: Select[tuple[Task]], sort_by: str | None) -> Select[tuple[Task]]:
+    sort_key = (sort_by or "status").lower()
+    status_order = case(
+        (Task.status == TaskStatusEnum.RUNNING, 0),
+        (Task.status == TaskStatusEnum.PAUSED, 1),
+        (Task.status == TaskStatusEnum.PENDING, 2),
+        (Task.status == TaskStatusEnum.COMPLETED, 3),
+        (Task.status == TaskStatusEnum.TERMINATED, 4),
+        else_=5,
+    )
+
+    if sort_key in {"status", ""}:
+        return stmt.order_by(status_order, Task.updated_at.desc(), Task.id.desc())
+    if sort_key == "type":
+        return stmt.order_by(Task.task_type, Task.updated_at.desc(), Task.id.desc())
+    if sort_key in {"start_time", "start_time_asc"}:
+        return stmt.order_by(expression.nullslast(asc(Task.start_time)), Task.id.desc())
+    if sort_key == "start_time_desc":
+        return stmt.order_by(expression.nullslast(desc(Task.start_time)), Task.id.desc())
+
+    return stmt.order_by(Task.updated_at.desc(), Task.id.desc())
 
 
 def get_by_id(db: Session, task_id: int) -> Optional[Task]:
@@ -26,6 +50,7 @@ def list_tasks(
     status: TaskStatusEnum | None = None,
     include_all: bool = False,
     device_identifier: str | None = None,
+    sort_by: str | None = None,
 ) -> List[Task]:
     stmt = _build_base_query()
     if not include_all:
@@ -41,7 +66,7 @@ def list_tasks(
     if device_identifier:
         stmt = stmt.join(Task.device, isouter=True).where(Device.device_id.contains(device_identifier))
 
-    stmt = stmt.order_by(Task.updated_at.desc(), Task.id.desc())
+    stmt = _apply_sorting(stmt, sort_by)
     return db.scalars(stmt).unique().all()
 
 
@@ -56,6 +81,7 @@ def list_tasks_paginated(
     page: int = 1,
     page_size: int = 20,
     device_identifier: str | None = None,
+    sort_by: str | None = None,
 ) -> Tuple[List[Task], int]:
     page = max(page, 1)
     page_size = max(min(page_size, 200), 1)
@@ -74,7 +100,7 @@ def list_tasks_paginated(
     if device_identifier:
         stmt = stmt.join(Task.device, isouter=True).where(Device.device_id.contains(device_identifier))
 
-    stmt = stmt.order_by(Task.updated_at.desc(), Task.id.desc())
+    stmt = _apply_sorting(stmt, sort_by)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(total_stmt) or 0

@@ -3,7 +3,7 @@
 
   let taskState = loadTaskState();
   let currentGroupId = "all";
-  let currentSort = "remaining_asc";
+  let currentSort = "status";
   let currentOwner = "all";
   let currentDeviceKeyword = "";
   let currentStatus = "all";
@@ -23,6 +23,7 @@
     pageSize: 30,
     total: 0,
   };
+  const serverSortKeys = new Set(["status", "type", "start_time", "start_time_asc", "start_time_desc"]);
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
@@ -755,6 +756,7 @@
       tasks = tasks.filter((t) => String(t.device_id || "").toLowerCase().includes(kw));
     }
 
+    if (serverSortKeys.has(currentSort)) return tasks;
     return sortTasks(tasks);
   }
 
@@ -770,6 +772,7 @@
       if (currentType !== "all") params.append("task_type", currentType);
       const deviceKw = (currentDeviceKeyword || "").trim();
       if (deviceKw) params.append("device_identifier", deviceKw);
+      if (currentSort) params.append("sort_by", currentSort);
       params.append("page", page);
       params.append("page_size", taskPagination.pageSize);
 
@@ -1718,7 +1721,8 @@
     });
     document.querySelector("#task-sort")?.addEventListener("change", (evt) => {
       currentSort = evt.target.value;
-      renderTasks();
+      taskPagination.page = 1;
+      loadTasksFromServer(currentGroupId, { page: taskPagination.page });
     });
     const prevBtn = document.querySelector("#task-prev-page");
     const nextBtn = document.querySelector("#task-next-page");
@@ -1773,6 +1777,8 @@
 
     const deviceInput = document.querySelector("#device-filter");
     if (deviceInput) deviceInput.value = currentDeviceKeyword;
+    const sortSelect = document.querySelector("#task-sort");
+    if (sortSelect) sortSelect.value = currentSort;
 
     startRealtimeTicker();
     setCreateTypeButtons(createTaskType);
