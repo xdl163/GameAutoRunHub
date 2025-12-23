@@ -1,12 +1,12 @@
 """任务数据访问层。"""
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Task, TaskStatusEnum, TaskTypeEnum
+from app.models import Device, Task, TaskStatusEnum, TaskTypeEnum
 
 
 def _build_base_query() -> Select[tuple[Task]]:
@@ -25,6 +25,7 @@ def list_tasks(
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
     include_all: bool = False,
+    device_identifier: str | None = None,
 ) -> List[Task]:
     stmt = _build_base_query()
     if not include_all:
@@ -36,8 +37,52 @@ def list_tasks(
         stmt = stmt.where(Task.task_type == task_type)
     if status:
         stmt = stmt.where(Task.status == status)
+
+    if device_identifier:
+        stmt = stmt.join(Task.device, isouter=True).where(Device.device_id.contains(device_identifier))
+
     stmt = stmt.order_by(Task.updated_at.desc(), Task.id.desc())
-    return db.scalars(stmt).all()
+    return db.scalars(stmt).unique().all()
+
+
+def list_tasks_paginated(
+    db: Session,
+    *,
+    group_ids: Sequence[int] | None = None,
+    created_by: int | None = None,
+    task_type: TaskTypeEnum | None = None,
+    status: TaskStatusEnum | None = None,
+    include_all: bool = False,
+    page: int = 1,
+    page_size: int = 20,
+    device_identifier: str | None = None,
+) -> Tuple[List[Task], int]:
+    page = max(page, 1)
+    page_size = max(min(page_size, 200), 1)
+
+    stmt = _build_base_query()
+    if not include_all:
+        if group_ids:
+            stmt = stmt.where(Task.group_id.in_(group_ids))
+        if created_by is not None:
+            stmt = stmt.where(Task.created_by == created_by)
+    if task_type:
+        stmt = stmt.where(Task.task_type == task_type)
+    if status:
+        stmt = stmt.where(Task.status == status)
+
+    if device_identifier:
+        stmt = stmt.join(Task.device, isouter=True).where(Device.device_id.contains(device_identifier))
+
+    stmt = stmt.order_by(Task.updated_at.desc(), Task.id.desc())
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = db.scalar(total_stmt) or 0
+
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+
+    tasks = db.scalars(stmt).unique().all()
+    return tasks, total
 
 
 def create_task(
@@ -78,4 +123,4 @@ def delete(db: Session, task: Task) -> None:
     db.commit()
 
 
-__all__ = ["create_task", "delete", "get_by_id", "list_tasks", "save"]
+__all__ = ["create_task", "delete", "get_by_id", "list_tasks", "save", "list_tasks_paginated"]

@@ -209,18 +209,57 @@ def list_tasks(
     task_type: TaskTypeEnum | None = None,
     status: TaskStatusEnum | None = None,
 ) -> list[Task]:
+    tasks, _ = list_tasks_paginated(
+        db,
+        requester=requester,
+        group_id=group_id,
+        task_type=task_type,
+        status=status,
+        page=None,
+        page_size=None,
+    )
+    return tasks
+
+
+def list_tasks_paginated(
+    db: Session,
+    *,
+    requester: User,
+    group_id: int | None = None,
+    task_type: TaskTypeEnum | None = None,
+    status: TaskStatusEnum | None = None,
+    page: int | None = 1,
+    page_size: int | None = 20,
+    device_identifier: str | None = None,
+) -> tuple[list[Task], int]:
     accessible_group_ids = task_group_service.resolve_accessible_group_ids(db, requester=requester)
     if requester.role not in {RoleEnum.ADMIN, RoleEnum.SUPER_ADMIN}:
         if group_id and group_id not in accessible_group_ids:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该分组任务")
 
     target_groups = accessible_group_ids if group_id is None else [group_id]
-    return task_repository.list_tasks(
+    if page is None or page_size is None:
+        tasks = task_repository.list_tasks(
+            db,
+            group_ids=target_groups,
+            created_by=None,
+            task_type=task_type,
+            status=status,
+            include_all=False,
+            device_identifier=device_identifier,
+        )
+        return tasks, len(tasks)
+
+    return task_repository.list_tasks_paginated(
         db,
         group_ids=target_groups,
         created_by=None,
         task_type=task_type,
         status=status,
+        include_all=False,
+        page=page,
+        page_size=page_size,
+        device_identifier=device_identifier,
     )
 
 
@@ -457,6 +496,7 @@ __all__ = [
     "change_device",
     "create_task",
     "list_tasks",
+    "list_tasks_paginated",
     "move_group",
     "patch_task",
     "update_detail",
