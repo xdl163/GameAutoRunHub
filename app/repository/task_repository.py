@@ -27,6 +27,38 @@ def _order_nulls_last(column, descending: bool = False):
     return nulls_last_flag, direction(column)
 
 
+def _anchor_time_expr():
+    now_expr = func.now()
+    return case(
+        (Task.status.in_((TaskStatusEnum.COMPLETED, TaskStatusEnum.TERMINATED)), func.coalesce(Task.end_time, Task.updated_at, now_expr)),
+        else_=now_expr,
+    )
+
+
+def _start_time_with_offset_expr():
+    # 与前端 startTimeWithOffset 保持一致：start_time + 8 小时
+    return func.coalesce(func.date_add(Task.start_time, text("INTERVAL 8 HOUR")), func.now())
+
+
+def _paused_seconds_expr(anchor_expr):
+    base_paused = func.coalesce(Task.paused_seconds, 0)
+    extra_paused = case(
+        (Task.paused_at.is_not(None), func.greatest(func.timestampdiff(text("SECOND"), Task.paused_at, anchor_expr), 0)),
+        else_=0,
+    )
+    return func.greatest(base_paused + extra_paused, 0)
+
+
+def _elapsed_seconds_expr(start_expr, anchor_expr):
+    return func.greatest(func.timestampdiff(text("SECOND"), start_expr, anchor_expr), 0)
+
+
+def _effective_seconds_expr(start_expr, anchor_expr):
+    paused_expr = _paused_seconds_expr(anchor_expr)
+    elapsed_expr = _elapsed_seconds_expr(start_expr, anchor_expr)
+    return func.greatest(elapsed_expr - paused_expr, 0)
+
+
 def _attach_detail_joins(stmt: Select[tuple[Task]]) -> Select[tuple[Task]]:
     return (
         stmt.outerjoin(ScoreTaskDetail, ScoreTaskDetail.task_id == Task.id)
@@ -36,32 +68,39 @@ def _attach_detail_joins(stmt: Select[tuple[Task]]) -> Select[tuple[Task]]:
 
 
 def _remaining_seconds_expr():
-    start_expr = func.coalesce(Task.start_time, func.now())
-    paused_expr = func.coalesce(Task.paused_seconds, 0)
+    anchor_expr = _anchor_time_expr()
+    start_expr = _start_time_with_offset_expr()
+    paused_expr = _paused_seconds_expr(anchor_expr)
+    elapsed_expr = _elapsed_seconds_expr(start_expr, anchor_expr)
+    effective_expr = _effective_seconds_expr(start_expr, anchor_expr)
 
-    score_remaining_points = func.greatest(
-        func.coalesce(ScoreTaskDetail.target_points, 0) - func.coalesce(ScoreTaskDetail.current_points, 0),
-        0,
+    score_rate_per_second = func.coalesce(func.nullif(ScoreTaskDetail.point_rate, 0), 0) / 3600.0
+    target_points = func.coalesce(ScoreTaskDetail.target_points, 0)
+    db_current_points = func.coalesce(ScoreTaskDetail.current_points, 0)
+    gained_points = score_rate_per_second * effective_expr
+    runtime_current = db_current_points + gained_points
+    clamped_current = func.least(runtime_current, target_points)
+    remaining_score_points = func.greatest(target_points - clamped_current, 0)
+    remaining_seconds_for_score = case(
+        (score_rate_per_second > 0, func.ceil(remaining_score_points / score_rate_per_second)),
+        else_=0,
     )
-    score_rate = func.nullif(func.coalesce(ScoreTaskDetail.point_rate, 0), 0)
-    score_duration_seconds = func.coalesce(score_remaining_points * 3600 / score_rate, 0)
 
     multiplier_duration_seconds = func.coalesce(MultiplierTaskDetail.duration_hours, 0)
     chest_duration_seconds = func.coalesce(ChestTaskDetail.duration_hours, 0)
+    remaining_seconds_for_duration = func.greatest(multiplier_duration_seconds + paused_expr - elapsed_expr, 0)
+    remaining_seconds_for_chest = func.greatest(chest_duration_seconds + paused_expr - elapsed_expr, 0)
 
-    finish_time_expr = case(
-        (Task.task_type == TaskTypeEnum.SCORE, func.timestampadd(text("SECOND"), paused_expr + score_duration_seconds, start_expr)),
-        (Task.task_type == TaskTypeEnum.MULTIPLIER, func.timestampadd(text("SECOND"), paused_expr + multiplier_duration_seconds, start_expr)),
-        (Task.task_type == TaskTypeEnum.CHEST, func.timestampadd(text("SECOND"), paused_expr + chest_duration_seconds, start_expr)),
-        else_=None,
+    remaining_seconds = case(
+        (Task.task_type == TaskTypeEnum.SCORE, remaining_seconds_for_score),
+        (Task.task_type == TaskTypeEnum.MULTIPLIER, remaining_seconds_for_duration),
+        (Task.task_type == TaskTypeEnum.CHEST, remaining_seconds_for_chest),
+        else_=func.greatest(func.timestampdiff(text("SECOND"), anchor_expr, anchor_expr), 0),
     )
-
-    remaining_seconds = func.coalesce(func.timestampdiff(text("SECOND"), func.now(), finish_time_expr), 999999999)
-    normalized_remaining = func.greatest(remaining_seconds, 0)
 
     return case(
         (Task.status.in_((TaskStatusEnum.COMPLETED, TaskStatusEnum.TERMINATED)), 0),
-        else_=normalized_remaining,
+        else_=remaining_seconds,
     )
 
 
