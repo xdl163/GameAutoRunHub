@@ -23,7 +23,15 @@
     pageSize: 30,
     total: 0,
   };
-  const serverSortKeys = new Set(["status", "type", "start_time", "start_time_asc", "start_time_desc"]);
+  const serverSortKeys = new Set([
+    "status",
+    "type",
+    "start_time",
+    "start_time_asc",
+    "start_time_desc",
+    "remaining_asc",
+    "remaining_desc",
+  ]);
 
   const StatusLabels = {
     pending: { label: "未开始", color: "#6b7280" },
