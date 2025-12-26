@@ -1,5 +1,5 @@
 构建镜像：
-docker build -t gameautorunhub:latest .
+docker build -t gameautorunhub:v1.3 .
 
 启动服务（包含MySQL）：
 docker compose up -d
@@ -9,3 +9,11 @@ docker compose logs -f
 
 关闭并移除容器：
 docker compose down
+
+打包
+docker save -o gameautorunhub_v1.3.tar gameautorunhub:v1.3
+
+
+加载
+docker load -i gameautorunhub_v1.3.tar
+docker load -i mysql_8.0.tar
