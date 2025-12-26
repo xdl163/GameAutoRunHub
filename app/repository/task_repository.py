@@ -3,10 +3,18 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence, Tuple
 
-from sqlalchemy import Select, asc, case, desc, func, select
+from sqlalchemy import Select, asc, case, desc, func, select, text
 from sqlalchemy.orm import Session
 
-from app.models import Device, Task, TaskStatusEnum, TaskTypeEnum
+from app.models import (
+    ChestTaskDetail,
+    Device,
+    MultiplierTaskDetail,
+    ScoreTaskDetail,
+    Task,
+    TaskStatusEnum,
+    TaskTypeEnum,
+)
 
 
 def _build_base_query() -> Select[tuple[Task]]:
@@ -17,6 +25,44 @@ def _order_nulls_last(column, descending: bool = False):
     nulls_last_flag = case((column.is_(None), 1), else_=0)
     direction = desc if descending else asc
     return nulls_last_flag, direction(column)
+
+
+def _attach_detail_joins(stmt: Select[tuple[Task]]) -> Select[tuple[Task]]:
+    return (
+        stmt.outerjoin(ScoreTaskDetail, ScoreTaskDetail.task_id == Task.id)
+        .outerjoin(MultiplierTaskDetail, MultiplierTaskDetail.task_id == Task.id)
+        .outerjoin(ChestTaskDetail, ChestTaskDetail.task_id == Task.id)
+    )
+
+
+def _remaining_seconds_expr():
+    start_expr = func.coalesce(Task.start_time, func.now())
+    paused_expr = func.coalesce(Task.paused_seconds, 0)
+
+    score_remaining_points = func.greatest(
+        func.coalesce(ScoreTaskDetail.target_points, 0) - func.coalesce(ScoreTaskDetail.current_points, 0),
+        0,
+    )
+    score_rate = func.nullif(func.coalesce(ScoreTaskDetail.point_rate, 0), 0)
+    score_duration_seconds = func.coalesce(score_remaining_points * 3600 / score_rate, 0)
+
+    multiplier_duration_seconds = func.coalesce(MultiplierTaskDetail.duration_hours, 0)
+    chest_duration_seconds = func.coalesce(ChestTaskDetail.duration_hours, 0)
+
+    finish_time_expr = case(
+        (Task.task_type == TaskTypeEnum.SCORE, func.timestampadd(text("SECOND"), paused_expr + score_duration_seconds, start_expr)),
+        (Task.task_type == TaskTypeEnum.MULTIPLIER, func.timestampadd(text("SECOND"), paused_expr + multiplier_duration_seconds, start_expr)),
+        (Task.task_type == TaskTypeEnum.CHEST, func.timestampadd(text("SECOND"), paused_expr + chest_duration_seconds, start_expr)),
+        else_=None,
+    )
+
+    remaining_seconds = func.coalesce(func.timestampdiff(text("SECOND"), func.now(), finish_time_expr), 999999999)
+    normalized_remaining = func.greatest(remaining_seconds, 0)
+
+    return case(
+        (Task.status.in_((TaskStatusEnum.COMPLETED, TaskStatusEnum.TERMINATED)), 0),
+        else_=normalized_remaining,
+    )
 
 
 def _apply_sorting(stmt: Select[tuple[Task]], sort_by: str | None) -> Select[tuple[Task]]:
@@ -39,6 +85,11 @@ def _apply_sorting(stmt: Select[tuple[Task]], sort_by: str | None) -> Select[tup
         return stmt.order_by(nulls_last_flag, ordered, Task.id.desc())
     if sort_key == "start_time_desc":
         nulls_last_flag, ordered = _order_nulls_last(Task.start_time, descending=True)
+        return stmt.order_by(nulls_last_flag, ordered, Task.id.desc())
+    if sort_key in {"remaining_asc", "remaining_desc"}:
+        stmt = _attach_detail_joins(stmt)
+        remaining_expr = _remaining_seconds_expr()
+        nulls_last_flag, ordered = _order_nulls_last(remaining_expr, descending=sort_key.endswith("desc"))
         return stmt.order_by(nulls_last_flag, ordered, Task.id.desc())
 
     return stmt.order_by(Task.updated_at.desc(), Task.id.desc())
